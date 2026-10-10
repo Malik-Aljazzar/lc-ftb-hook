@@ -1,8 +1,8 @@
 package dev.malik.lcftbhook.client;
 
-import dev.ftb.mods.ftbteams.api.Team;
 import dev.malik.lcftbhook.data.ChunkOwnership;
 import dev.malik.lcftbhook.data.Region;
+import dev.malik.lcftbhook.data.ViewerRank;
 import dev.malik.lcftbhook.teams.MarketplaceTeamProperties;
 
 import javax.annotation.Nullable;
@@ -13,24 +13,22 @@ public final class BuyableChunkChecker {
     private BuyableChunkChecker() {
     }
 
-    public static boolean isBuyable(ChunkOwnership ownership, @Nullable Team team, String chunkKey, @Nullable UUID localPlayer) {
+    /** @param teamId the land's owning team, null if unknown */
+    public static boolean isBuyable(ChunkOwnership ownership, @Nullable UUID teamId, String chunkKey, @Nullable UUID localPlayer) {
         if (!ownership.isListed() || localPlayer == null) {
             return false;
         }
         if (localPlayer.equals(ownership.privateOwner())) {
             return false;
         }
-        if (team != null && !hasAccess(team, chunkKey, localPlayer)) {
-            return false;
-        }
-        return true;
+        return teamId == null || hasAccess(teamId, chunkKey);
     }
 
-    private static boolean hasAccess(Team team, String chunkKey, UUID player) {
+    private static boolean hasAccess(UUID teamId, String chunkKey) {
         UUID regionId = ClientRegionMembership.rawRegionOf(chunkKey);
-        Region region = regionId != null ? ClientPublicRegions.get(regionId) : ClientPublicRegions.getDefaultFor(team.getTeamId());
+        Region region = regionId != null ? ClientPublicRegions.get(regionId) : ClientPublicRegions.getDefaultFor(teamId);
         String access = region != null ? region.buyerAccess() : MarketplaceTeamProperties.ACCESS_ALL;
-        var rank = team.getRankForPlayer(player);
+        ViewerRank rank = ClientClaims.rankIn(teamId);
         return switch (access) {
             case MarketplaceTeamProperties.ACCESS_TEAM -> rank.isMemberOrBetter();
             case MarketplaceTeamProperties.ACCESS_ALLIES -> rank.isAllyOrBetter();

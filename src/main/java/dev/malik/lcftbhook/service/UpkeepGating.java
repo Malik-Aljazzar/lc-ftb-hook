@@ -1,10 +1,10 @@
 package dev.malik.lcftbhook.service;
 
-import dev.ftb.mods.ftbteams.api.Team;
 import dev.malik.lcftbhook.config.ForceLoadUpkeepMode;
 import dev.malik.lcftbhook.config.LCFtbHookConfig;
 import dev.malik.lcftbhook.config.ProtectionUpkeepMode;
 import net.minecraft.server.MinecraftServer;
+import java.util.UUID;
 
 /**
  * Whether force-load / protection upkeep should actually be charged (and
@@ -18,25 +18,25 @@ public final class UpkeepGating {
     private UpkeepGating() {
     }
 
-    public static boolean shouldChargeForceLoad(MinecraftServer server, Team team) {
+    public static boolean shouldChargeForceLoad(MinecraftServer server, UUID teamId) {
         ForceLoadUpkeepMode mode = LCFtbHookConfig.SERVER.forceLoadUpkeepMode.get();
         return switch (mode) {
             case ALWAYS -> true;
-            case DEFAULT -> isAnyTeamMemberOnline(team);
+            case DEFAULT -> isAnyTeamMemberOnline(server, teamId);
         };
     }
 
-    public static boolean shouldChargeProtection(MinecraftServer server, Team team) {
+    public static boolean shouldChargeProtection(MinecraftServer server, UUID teamId) {
         ProtectionUpkeepMode mode = LCFtbHookConfig.SERVER.protectionUpkeepMode.get();
         return switch (mode) {
             case HEAVY -> true;
             case DEFAULT -> isAnyPlayerOnlineOnServer(server);
-            case LIGHT -> isAnyTeamMemberOnline(team);
+            case LIGHT -> isAnyTeamMemberOnline(server, teamId);
         };
     }
 
-    private static boolean isAnyTeamMemberOnline(Team team) {
-        return !team.getOnlineMembers().isEmpty();
+    private static boolean isAnyTeamMemberOnline(MinecraftServer server, UUID teamId) {
+        return !dev.malik.lcftbhook.port.Backends.claim().onlineMembers(server, teamId).isEmpty();
     }
 
     private static boolean isAnyPlayerOnlineOnServer(MinecraftServer server) {

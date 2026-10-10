@@ -28,7 +28,7 @@ import java.util.function.Function;
  * tune live - i.e. every scalar (Long/Int/Double/Boolean/Enum) value, using
  * exactly the config's own defined range/enum validation
  * ({@code ValueSpec.test}) so a bad input is rejected the same way an
- * invalid line in the .toml file would be. {@code protectionDismantleOrder}
+ * invalid line in the .toml file would be. The {@code dismantleOrder} list
  * (a list, not a scalar) is intentionally not exposed here - reordering a
  * list through a single string argument doesn't fit this command's shape.
  * <p>
@@ -139,18 +139,14 @@ public final class RuntimeConfigCommand {
         registerBoolean(map, "lockClaimVisibilityPublic", c.lockClaimVisibilityPublic);
         registerEnum(map, "forceLoadUpkeepMode", c.forceLoadUpkeepMode, ForceLoadUpkeepMode.class);
         registerEnum(map, "protectionUpkeepMode", c.protectionUpkeepMode, ProtectionUpkeepMode.class);
-        registerLong(map, "mobGriefProtectionPrice", c.mobGriefProtectionPrice);
-        registerLong(map, "explosionProtectionPrice", c.explosionProtectionPrice);
-        registerLong(map, "pvpDisablePrice", c.pvpDisablePrice);
-        registerLong(map, "blockInteractProtectionPrice", c.blockInteractProtectionPrice);
-        registerLong(map, "blockEditProtectionPrice", c.blockEditProtectionPrice);
-        registerLong(map, "entityInteractProtectionPrice", c.entityInteractProtectionPrice);
+        // Protection prices of every installed claim mod, e.g. "price.ftb.allow_pvp".
+        dev.malik.lcftbhook.config.ProtectionPriceConfig.all().forEach((setId, prices) ->
+                prices.forEach((fieldId, value) -> registerLong(map, "price." + setId + "." + fieldId, value)));
         registerDouble(map, "warCostMultiplier", c.warCostMultiplier);
         registerDouble(map, "warOutgoingCostMultiplier", c.warOutgoingCostMultiplier);
         registerBoolean(map, "warEnabled", c.warEnabled,
                 enabled -> dev.malik.lcftbhook.service.WarService.setWarSystemEnabled(
                         net.neoforged.neoforge.server.ServerLifecycleHooks.getCurrentServer(), enabled));
-        registerBoolean(map, "debugTestTeamCommands", c.debugTestTeamCommands);
 
         // TreeMap sorted the registration above alphabetically for iteration
         // order only - return as a LinkedHashMap so callers get a stable,

@@ -1,10 +1,6 @@
 # Dev defaults for lc_ftb_hook server config (copied/patched by Apply-DevServerConfig.ps1)
 [general]
-	landChunkGroupSize = 5
 	upkeepPeriodMinutes = 1
 
 [war]
 	warCostMultiplier = 1.2
-
-[debug]
-	debugTestTeamCommands = true

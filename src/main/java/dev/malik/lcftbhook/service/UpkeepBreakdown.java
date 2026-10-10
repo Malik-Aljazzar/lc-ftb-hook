@@ -1,14 +1,11 @@
 package dev.malik.lcftbhook.service;
 
-import dev.ftb.mods.ftbteams.api.Team;
 import dev.malik.lcftbhook.config.LCFtbHookConfig;
 import dev.malik.lcftbhook.data.FtbHookSavedData;
 import dev.malik.lcftbhook.data.ProtectionProperty;
 import dev.malik.lcftbhook.data.Region;
 import dev.malik.lcftbhook.data.RegionPropertyKey;
 import dev.malik.lcftbhook.data.TeamPendingState;
-import dev.malik.lcftbhook.teams.FtbTeamCatalog;
-import io.github.lightman314.lightmanscurrency.api.money.value.MoneyValue;
 import net.minecraft.server.MinecraftServer;
 
 import java.util.ArrayList;
@@ -17,7 +14,7 @@ import java.util.UUID;
 
 public record UpkeepBreakdown(
         UUID teamId,
-        MoneyValue totalCost,
+        long totalCostCopper,
         int periodMinutes,
         int chunkCount,
         int forceLoadCount,
@@ -58,18 +55,15 @@ public record UpkeepBreakdown(
 
     public static UpkeepBreakdown capture(
             MinecraftServer server,
-            Team team,
+            UUID teamId,
             int forceLoadCount,
-            MoneyValue totalCost,
+            long totalCostCopper,
             TeamPendingState pendingState
     ) {
         int periodMinutes = LCFtbHookConfig.SERVER.upkeepPeriodMinutes.get();
         FtbHookSavedData savedData = FtbHookSavedData.get(server);
-        UUID teamId = team.getTeamId();
-        var chunkData = dev.ftb.mods.ftbchunks.api.FTBChunksAPI.api().getManager().getOrCreateData(team);
-
-        ProtectionPricing.ChunkCounts counts = ProtectionPricing.countBillableChunks(server, team, chunkData, pendingState);
-        WarService.WarCostBreakdown warCosts = WarService.calculateWarCosts(server, team);
+        ProtectionPricing.ChunkCounts counts = ProtectionPricing.countBillableChunks(server, teamId, pendingState);
+        WarCostService.WarCostBreakdown warCosts = WarCostService.calculateWarCosts(server, teamId);
 
         List<RegionProtectionSection> sections = new ArrayList<>();
         long totalProtectionCopper = 0L;
@@ -95,7 +89,7 @@ public record UpkeepBreakdown(
 
         return new UpkeepBreakdown(
                 teamId,
-                totalCost,
+                totalCostCopper,
                 periodMinutes,
                 counts.totalChunks(),
                 forceLoadCount,
@@ -106,9 +100,9 @@ public record UpkeepBreakdown(
                 warCosts.incomingWarCount(),
                 warCosts.outgoingWarCount(),
                 sections,
-                collectWarLines(server, team),
+                collectWarLines(server, teamId),
                 collectPendingProtections(server, teamId, pendingState),
-                collectPendingWars(server, team, pendingState),
+                collectPendingWars(server, teamId, pendingState),
                 pendingState.pendingForceLoads().size(),
                 pendingState.pendingForceUnloads().size(),
                 pendingState.pendingRegionAssignments().size()
@@ -123,12 +117,12 @@ public record UpkeepBreakdown(
                 || pendingRegionAssignmentCount > 0;
     }
 
-    private static List<WarLine> collectWarLines(MinecraftServer server, Team team) {
+    private static List<WarLine> collectWarLines(MinecraftServer server, UUID teamId) {
         List<WarLine> lines = new ArrayList<>();
-        for (WarService.WarTeamView view : WarService.buildBilledIncomingViews(server, team)) {
+        for (WarTeamView view : WarIncomingViewBuilder.buildBilledIncomingViews(server, teamId)) {
             lines.add(new WarLine(view.displayName(), view.warCostCopper(), true));
         }
-        for (WarService.WarTeamView view : WarService.buildBilledOutgoingViews(server, team)) {
+        for (WarTeamView view : WarViewBuilder.buildBilledOutgoingViews(server, teamId)) {
             lines.add(new WarLine(view.displayName(), view.warCostCopper(), false));
         }
         return lines;
@@ -140,7 +134,7 @@ public record UpkeepBreakdown(
             if (!region.isAtMinimum(property)) {
                 lines.add(new ProtectionLine(
                         "message.lc_ftb_hook.upkeep_detail." + property.id(),
-                        property.configPrice()
+                        Math.floorDiv(property.configPrice(), 10L)
                 ));
             }
         }
@@ -176,7 +170,7 @@ public record UpkeepBreakdown(
 
     private static List<PendingWarLine> collectPendingWars(
             MinecraftServer server,
-            Team team,
+            UUID teamId,
             TeamPendingState pendingState
     ) {
         List<PendingWarLine> lines = new ArrayList<>();
@@ -190,8 +184,7 @@ public record UpkeepBreakdown(
     }
 
     private static String resolveTeamName(MinecraftServer server, UUID teamId) {
-        Team team = FtbTeamCatalog.resolve(server, teamId);
-        return team != null ? WarService.displayName(team) : teamId.toString();
+        return WarService.displayName(server, teamId);
     }
 
     public long totalWarCopper() {

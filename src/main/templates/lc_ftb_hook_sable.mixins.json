@@ -1,0 +1,11 @@
+{
+  "required": false,
+  "package": "dev.malik.lcftbhook.mixin.sable",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "SableCollisionExplosionProtectionMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 0
+  }
+}

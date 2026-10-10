@@ -19,7 +19,7 @@ import java.util.Collection;
  * membership sync, chunk ownership/listing sync).
  * <p>
  * FTB Chunks' OWN {@code MapManager} (used to refresh FTB's own
- * claim-manager map and, via {@link dev.malik.lcftbhook.mixin.client.MapChunkRegionBorderMixin},
+ * claim-manager map and, via {@link dev.malik.lcftbhook.mixin.ftb.client.MapChunkRegionBorderMixin},
  * its border rendering) is a completely separate, unrelated pipeline from
  * Xaero's - both need refreshing on the same events, but through their own
  * respective APIs.

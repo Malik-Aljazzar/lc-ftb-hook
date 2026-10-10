@@ -2,7 +2,6 @@ package dev.malik.lcftbhook.config;
 
 import net.neoforged.neoforge.common.ModConfigSpec;
 
-import java.util.List;
 
 public final class LCFtbHookConfig {
     public static final ModConfigSpec SERVER_SPEC;
@@ -30,28 +29,45 @@ public final class LCFtbHookConfig {
         public final ModConfigSpec.IntValue upkeepPeriodMinutes;
         public final ModConfigSpec.EnumValue<ForceLoadUpkeepMode> forceLoadUpkeepMode;
         public final ModConfigSpec.EnumValue<ProtectionUpkeepMode> protectionUpkeepMode;
-        public final ModConfigSpec.LongValue mobGriefProtectionPrice;
-        public final ModConfigSpec.LongValue explosionProtectionPrice;
-        public final ModConfigSpec.LongValue pvpDisablePrice;
-        public final ModConfigSpec.LongValue blockInteractProtectionPrice;
-        public final ModConfigSpec.LongValue blockEditProtectionPrice;
-        public final ModConfigSpec.LongValue entityInteractProtectionPrice;
         public final ModConfigSpec.DoubleValue warCostMultiplier;
         public final ModConfigSpec.DoubleValue warOutgoingCostMultiplier;
         public final ModConfigSpec.BooleanValue warEnabled;
-        public final ModConfigSpec.ConfigValue<List<? extends String>> protectionDismantleOrder;
-        public final ModConfigSpec.BooleanValue debugTestTeamCommands;
         public final ModConfigSpec.BooleanValue lockClaimVisibilityPublic;
+        public final ModConfigSpec.ConfigValue<String> claimBackend;
+        public final ModConfigSpec.ConfigValue<String> currencyBackend;
 
         Server(ModConfigSpec.Builder builder) {
-            builder.comment("LC FTB Hook server configuration").push("general");
+            builder.comment(
+                    "LC FTB Hook server configuration",
+                    "",
+                    "\"Copper\" means the smallest coin of the active currency mod:",
+                    "  Lightman's Currency: the copper coin (iron = 10, gold = 100, emerald = 1000,",
+                    "                       diamond = 10000, netherite = 100000 copper)",
+                    "  Create: Numismatics:  the spur (bevel = 8, sprocket = 16, cog = 64,",
+                    "                       crown = 512, sun = 4096 spurs)",
+                    "The same number therefore buys more in Lightman's coins than in Numismatics'",
+                    "coins: 10000 copper is 1 diamond coin, but 2 suns and change. Every default",
+                    "below is written out in both currencies.",
+                    "",
+                    "Every price value below (claim prices, force-load upkeep, and the protection",
+                    "prices in " + ProtectionPriceConfig.FILE_NAME + ") is denominated in TENTHS of a",
+                    "copper - a value of 10 means 1 copper (1 Lightman's copper coin / 1 Numismatics",
+                    "spur), a value of 8 means 0.8 copper. This lets a price be a fraction of a",
+                    "copper without needing decimals; the actual bill is always rounded DOWN to",
+                    "the nearest whole copper. Protection prices are additionally PER CHUNK that",
+                    "has the protection active - multiplied by the chunk count BEFORE dividing by",
+                    "10 and rounding down, e.g. a value of 8 (0.8 copper/chunk) on 3 such chunks",
+                    "bills floor(0.8 * 3) = floor(2.4) = 2 copper, not floor(0.8) * 3 = 0. Claim",
+                    "prices and force-load upkeep are flat amounts - just divide by 10."
+            ).push("general");
 
             claimPrice = builder
                     .comment(
-                            "Only used when claimPricingMode = CONSTANT. Cost in copper units (main coin chain) to claim one chunk,",
-                            "the same for every claim regardless of how many the team already has. Default: 10000 copper = 1 Diamond coin."
+                            "Only used when claimPricingMode = CONSTANT. Cost to claim one chunk, the",
+                            "same for every claim regardless of how many the team already has.",
+                            "Default: 100000 (= " + CoinExamples.ofTenths(100_000L) + ")."
                     )
-                    .defineInRange("claimPrice", 10_000L, 0L, Long.MAX_VALUE);
+                    .defineInRange("claimPrice", 100_000L, 0L, Long.MAX_VALUE);
 
             claimPricingMode = builder
                     .comment(
@@ -67,17 +83,18 @@ public final class LCFtbHookConfig {
                             "  EXPONENTIAL - price grows by a fixed PERCENTAGE every claimIncrementSize claims:",
                             "                increment = floor(chunksAlreadyClaimed / claimIncrementSize)",
                             "                price = claimBasePrice * (1 + claimPriceGrowthPercent) ^ increment",
-                            "Both LINEAR and EXPONENTIAL can produce prices with fractional copper - those are always",
-                            "rounded DOWN to the nearest whole copper before being charged."
+                            "All of the above is computed in tenths of a copper (see the note at the top of this",
+                            "file); the result is always rounded DOWN to the nearest whole copper before being charged."
                     )
                     .defineEnum("claimPricingMode", ClaimPricingMode.EXPONENTIAL);
 
             claimBasePrice = builder
                     .comment(
                             "Used by claimPricingMode = LINEAR and EXPONENTIAL only: the price of a claim at increment 0",
-                            "(a team's first claimIncrementSize chunks). Ignored under CONSTANT (see claimPrice instead)."
+                            "(a team's first claimIncrementSize chunks). Ignored under CONSTANT (see claimPrice instead).",
+                            "Default: 100000 (= " + CoinExamples.ofTenths(100_000L) + ")."
                     )
-                    .defineInRange("claimBasePrice", 10_000L, 0L, Long.MAX_VALUE);
+                    .defineInRange("claimBasePrice", 100_000L, 0L, Long.MAX_VALUE);
 
             claimIncrementSize = builder
                     .comment(
@@ -88,10 +105,11 @@ public final class LCFtbHookConfig {
 
             claimIncrementPrice = builder
                     .comment(
-                            "Used by claimPricingMode = LINEAR only: how much copper the price goes up by per increment",
-                            "(every claimIncrementSize claims). Ignored by CONSTANT and EXPONENTIAL."
+                            "Used by claimPricingMode = LINEAR only: how much the price goes up by per increment",
+                            "(every claimIncrementSize claims). Ignored by CONSTANT and EXPONENTIAL.",
+                            "Default: 10000 (= " + CoinExamples.ofTenths(10_000L) + ")."
                     )
-                    .defineInRange("claimIncrementPrice", 1_000L, 0L, Long.MAX_VALUE);
+                    .defineInRange("claimIncrementPrice", 10_000L, 0L, Long.MAX_VALUE);
 
             claimPriceGrowthPercent = builder
                     .comment(
@@ -110,8 +128,9 @@ public final class LCFtbHookConfig {
                     .defineInRange("unclaimRefundRatio", 0.8D, 0.0D, 1.0D);
 
             forceLoadUpkeepPrice = builder
-                    .comment("Upkeep cost in copper units per force-loaded chunk per upkeep period (force-loading itself is free). Default: 1 Netherite coin (100000 copper).")
-                    .defineInRange("forceLoadUpkeepPrice", 100_000L, 0L, Long.MAX_VALUE);
+                    .comment("Upkeep cost per force-loaded chunk per upkeep period (force-loading itself is free).",
+                            "Default: 1000000 (= " + CoinExamples.ofTenths(1_000_000L) + ").")
+                    .defineInRange("forceLoadUpkeepPrice", 1_000_000L, 0L, Long.MAX_VALUE);
 
             upkeepPeriodMinutes = builder
                     .comment("How often upkeep is charged, in real-time minutes")
@@ -147,38 +166,28 @@ public final class LCFtbHookConfig {
 
             builder.pop();
             builder.comment(
-                    "Per-protection base prices added to upkeep calculation (b in c = b * n / 10, rounded down).",
-                    "IMPORTANT: these prices are per 10 BILLABLE CHUNKS that have the property active, not per single",
-                    "chunk - a value of V means V copper is owed once 10 chunks have it active, rounded DOWN. E.g. a",
-                    "value of 1 charges nothing below 10 such chunks, then 1 copper at 10-19 chunks, 2 copper at",
-                    "20-29, and so on - this lets a price be effectively \"a fraction of a copper per chunk\" without",
-                    "needing fractional money. A value of 10 is exactly 1 copper per single chunk, same as the old",
-                    "per-chunk pricing (multiply an old per-chunk copper price by 10 to keep it equivalent)."
-            ).push("protectionPrices");
+                    "Which mod backs each of this hook's pluggable systems. AUTO (default) picks the",
+                    "highest-priority one that's actually installed - if only one candidate for a given",
+                    "system is installed, that one is always used regardless of this setting. Set an",
+                    "explicit value to force a specific backend even when a higher-priority one is also",
+                    "installed (e.g. to run OPAC on a server that has FTB Chunks installed only for an",
+                    "unrelated reason). An unknown or not-installed explicit value falls back to AUTO",
+                    "with a startup warning, it never fails to start."
+            ).push("backends");
 
-            mobGriefProtectionPrice = builder
-                    .comment("Price when mob griefing protection is enabled (Allow Mob Griefing = false), per 10 chunks. Default: 800 (= 80 copper per 10 chunks = 8 copper/chunk).")
-                    .defineInRange("mobGriefProtectionPrice", 800L, 0L, Long.MAX_VALUE);
+            claimBackend = builder
+                    .comment(
+                            "Backend for team/chunk-claim management. Priority order under AUTO: FTB (FTB Teams +",
+                            "FTB Chunks) first, then OPAC (Open Parties and Claims). Valid values: AUTO, FTB, OPAC."
+                    )
+                    .define("claimBackend", "AUTO");
 
-            explosionProtectionPrice = builder
-                    .comment("Price when explosion protection is enabled (Allow Explosion Damage = false), per 10 chunks. Default: 700 (second cheapest).")
-                    .defineInRange("explosionProtectionPrice", 700L, 0L, Long.MAX_VALUE);
-
-            pvpDisablePrice = builder
-                    .comment("Price when PvP is disabled (Allow PvP Combat = false), per 10 chunks. Default: 500 (cheapest protection).")
-                    .defineInRange("pvpDisablePrice", 500L, 0L, Long.MAX_VALUE);
-
-            blockInteractProtectionPrice = builder
-                    .comment("Price when block interact mode is not public, per 10 chunks. Default: 1000 (= 100 copper per 10 chunks = 10 copper/chunk).")
-                    .defineInRange("blockInteractProtectionPrice", 1000L, 0L, Long.MAX_VALUE);
-
-            blockEditProtectionPrice = builder
-                    .comment("Price when block edit mode is not public, per 10 chunks. Default: 1000.")
-                    .defineInRange("blockEditProtectionPrice", 1000L, 0L, Long.MAX_VALUE);
-
-            entityInteractProtectionPrice = builder
-                    .comment("Price when entity interact mode is not public, per 10 chunks. Default: 1000.")
-                    .defineInRange("entityInteractProtectionPrice", 1000L, 0L, Long.MAX_VALUE);
+            currencyBackend = builder
+                    .comment(
+                            "Backend for money/banking. Priority order under AUTO: LIGHTMANS_CURRENCY first, then",
+                            "NUMISMATICS. Valid values: AUTO, LIGHTMANS_CURRENCY, NUMISMATICS."
+                    )
+                    .define("currencyBackend", "AUTO");
 
             builder.pop();
             builder.comment("War declarations between claim teams (teams or solo players with claimed chunks)").push("war");
@@ -194,31 +203,6 @@ public final class LCFtbHookConfig {
             warCostMultiplier = builder
                     .comment("Incoming war exponent l. With base upkeep b and k incoming wars, the incoming surcharge is b * sum(l^n for n=0..k-1). First incoming war uses l^0 = 1.")
                     .defineInRange("warCostMultiplier", 1.2D, 1.0D, 100.0D);
-
-            builder.pop();
-            builder.comment("Order in which a region's protections are disabled when upkeep cannot be paid (first = dropped first); applied per-region in region-list order (top of the list dismantled first). Use the protection property ids without namespace.").push("protectionDismantle");
-
-            protectionDismantleOrder = builder
-                    .comment("Per-region protection dismantle order")
-                    .defineList(
-                            "protectionDismantleOrder",
-                            List.of(
-                                    "entity_interact_mode",
-                                    "block_edit_mode",
-                                    "block_interact_mode",
-                                    "allow_mob_griefing",
-                                    "allow_explosions",
-                                    "allow_pvp"
-                            ),
-                            obj -> obj instanceof String
-                    );
-
-            builder.pop();
-            builder.comment("Debug-only features for development and testing").push("debug");
-
-            debugTestTeamCommands = builder
-                    .comment("Allow /lc_ftb_hook seed_test_teams, clear_test_teams, and count_test_teams. Keep disabled on production servers.")
-                    .define("debugTestTeamCommands", false);
 
             builder.pop();
         }

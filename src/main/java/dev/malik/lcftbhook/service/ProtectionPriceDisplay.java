@@ -1,7 +1,6 @@
 package dev.malik.lcftbhook.service;
 
 import dev.malik.lcftbhook.client.ClientClaimPrices;
-import dev.malik.lcftbhook.util.MoneyUtil;
 import net.minecraft.network.chat.Component;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.fml.loading.FMLEnvironment;
@@ -19,8 +18,16 @@ public final class ProtectionPriceDisplay {
     private ProtectionPriceDisplay() {
     }
 
-    public static Component formatPricePerChunk(long copper) {
-        return MoneyUtil.fromCopper(copper).getText();
+    /**
+     * @param configuredPrice a protection property's raw config value
+     *                        (denominated in tenths of a copper, per single
+     *                        chunk - see the header of
+     *                        {@code ProtectionPriceConfig.FILE_NAME}) - always
+     *                        rounded DOWN to the nearest whole copper here,
+     *                        matching how the real per-region bill is rounded.
+     */
+    public static Component formatPricePerChunk(long configuredPrice) {
+        return dev.malik.lcftbhook.util.Money.format(Math.floorDiv(configuredPrice, 10L));
     }
 
     public static Component upkeepPeriodLabel() {

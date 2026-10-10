@@ -1,10 +1,10 @@
 package dev.malik.lcftbhook.service;
 
-import dev.ftb.mods.ftbchunks.api.ClaimedChunk;
-import dev.ftb.mods.ftbchunks.api.FTBChunksAPI;
-import dev.ftb.mods.ftbteams.api.Team;
+import dev.malik.lcftbhook.port.Backends;
+import dev.malik.lcftbhook.port.claim.ClaimPort;
+import dev.malik.lcftbhook.port.currency.CurrencyAccount;
+import dev.malik.lcftbhook.util.Money;
 import dev.malik.lcftbhook.LCFtbHook;
-import dev.malik.lcftbhook.bank.BankAccountHelper;
 import dev.malik.lcftbhook.data.ChunkOwnership;
 import dev.malik.lcftbhook.data.ChunkPosKey;
 import dev.malik.lcftbhook.data.FtbHookSavedData;
@@ -12,13 +12,9 @@ import dev.malik.lcftbhook.data.PlayerAccessList;
 import dev.malik.lcftbhook.data.ProtectionProperty;
 import dev.malik.lcftbhook.data.Region;
 import dev.malik.lcftbhook.network.SyncChunkOwnershipPayload;
-import dev.malik.lcftbhook.util.MoneyMessageUtil;
-import dev.malik.lcftbhook.util.MoneyUtil;
-import io.github.lightman314.lightmanscurrency.api.money.bank.IBankAccount;
-import io.github.lightman314.lightmanscurrency.api.money.bank.reference.builtin.PlayerBankReference;
-import io.github.lightman314.lightmanscurrency.api.money.value.MoneyValue;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
+import javax.annotation.Nullable;
 import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.neoforge.network.PacketDistributor;
 
@@ -60,25 +56,20 @@ public final class MarketplaceService {
         int notFound = 0;
 
         for (String chunkKey : chunkKeys) {
-            ClaimedChunk chunk = resolveChunk(chunkKey);
-            if (chunk == null) {
+            UUID teamId = ownerTeam(server, chunkKey);
+            if (teamId == null) {
                 notFound++;
                 continue;
             }
-            Team team = chunk.getTeamData().getTeam();
-            if (team == null) {
-                notFound++;
-                continue;
-            }
-            ChunkOwnership ownership = savedData.getChunkOwnership(team.getTeamId(), chunkKey);
+            ChunkOwnership ownership = savedData.getChunkOwnership(teamId, chunkKey);
 
             boolean eligible = asCountry
-                    ? ownership.isStateOwned() && team.getRankForPlayer(actor.getUUID()).isOfficerOrBetter()
+                    ? ownership.isStateOwned() && Backends.claim().rankOf(server, teamId, actor.getUUID()).isOfficerOrBetter()
                     : !ownership.isStateOwned() && actor.getUUID().equals(ownership.privateOwner());
             if (!eligible) {
                 LCFtbHook.LOGGER.info(
                         "marketplace listForSale denied (not eligible): chunk={} asCountry={} isStateOwned={} privateOwner={} actorRank={}",
-                        chunkKey, asCountry, ownership.isStateOwned(), ownership.privateOwner(), team.getRankForPlayer(actor.getUUID())
+                        chunkKey, asCountry, ownership.isStateOwned(), ownership.privateOwner(), Backends.claim().rankOf(server, teamId, actor.getUUID())
                 );
                 notEligible++;
                 continue;
@@ -91,7 +82,7 @@ public final class MarketplaceService {
             // passed, so telling the player it's "not theirs to sell" here would be
             // straight-up wrong, not just unhelpful.
             if (!asCountry) {
-                Region region = RegionService.resolveRegion(server, team.getTeamId(), chunkKey);
+                Region region = RegionService.resolveRegion(server, teamId, chunkKey);
                 if (!region.allowPrivateSelling()) {
                     sellingDisabled++;
                     continue;
@@ -104,12 +95,12 @@ public final class MarketplaceService {
             // such restriction - a private buyer must be able to resell
             // right away. Matches the client-side menu gating in
             // ChunkContextMenuBuilder/XaeroMarketplaceMenu.
-            if (savedData.isChunkFreshlyClaimed(team.getTeamId(), chunkKey)) {
+            if (savedData.isChunkFreshlyClaimed(teamId, chunkKey)) {
                 freshlyClaimed++;
                 continue;
             }
 
-            savedData.setChunkOwnership(team.getTeamId(), chunkKey, ownership.withListingPrice(pricePerChunk));
+            savedData.setChunkOwnership(teamId, chunkKey, ownership.withListingPrice(pricePerChunk));
             listed++;
         }
 
@@ -133,27 +124,23 @@ public final class MarketplaceService {
 
     public static void cancelListing(ServerPlayer actor, String chunkKey) {
         MinecraftServer server = actor.server;
-        ClaimedChunk chunk = resolveChunk(chunkKey);
-        if (chunk == null) {
-            return;
-        }
-        Team team = chunk.getTeamData().getTeam();
-        if (team == null) {
+        UUID teamId = ownerTeam(server, chunkKey);
+        if (teamId == null) {
             return;
         }
         FtbHookSavedData savedData = FtbHookSavedData.get(server);
-        ChunkOwnership ownership = savedData.getChunkOwnership(team.getTeamId(), chunkKey);
+        ChunkOwnership ownership = savedData.getChunkOwnership(teamId, chunkKey);
         if (!ownership.isListed()) {
             return;
         }
         boolean eligible = ownership.isStateOwned()
-                ? team.getRankForPlayer(actor.getUUID()).isOfficerOrBetter()
+                ? Backends.claim().rankOf(server, teamId, actor.getUUID()).isOfficerOrBetter()
                 : actor.getUUID().equals(ownership.privateOwner());
         if (!eligible) {
             actor.displayClientMessage(Component.translatable("message.lc_ftb_hook.marketplace_denied"), false);
             return;
         }
-        savedData.setChunkOwnership(team.getTeamId(), chunkKey, ownership.withListingPrice(null));
+        savedData.setChunkOwnership(teamId, chunkKey, ownership.withListingPrice(null));
         broadcastChunkOwnership(server);
     }
 
@@ -169,25 +156,21 @@ public final class MarketplaceService {
         FtbHookSavedData savedData = FtbHookSavedData.get(server);
         int cancelled = 0;
         for (String chunkKey : chunkKeys) {
-            ClaimedChunk chunk = resolveChunk(chunkKey);
-            if (chunk == null) {
+            UUID teamId = ownerTeam(server, chunkKey);
+            if (teamId == null) {
                 continue;
             }
-            Team team = chunk.getTeamData().getTeam();
-            if (team == null) {
-                continue;
-            }
-            ChunkOwnership ownership = savedData.getChunkOwnership(team.getTeamId(), chunkKey);
+            ChunkOwnership ownership = savedData.getChunkOwnership(teamId, chunkKey);
             if (!ownership.isListed()) {
                 continue;
             }
             boolean eligible = ownership.isStateOwned()
-                    ? team.getRankForPlayer(actor.getUUID()).isOfficerOrBetter()
+                    ? Backends.claim().rankOf(server, teamId, actor.getUUID()).isOfficerOrBetter()
                     : actor.getUUID().equals(ownership.privateOwner());
             if (!eligible) {
                 continue;
             }
-            savedData.setChunkOwnership(team.getTeamId(), chunkKey, ownership.withListingPrice(null));
+            savedData.setChunkOwnership(teamId, chunkKey, ownership.withListingPrice(null));
             cancelled++;
         }
         if (cancelled > 0) {
@@ -205,21 +188,20 @@ public final class MarketplaceService {
         // Hard error if any selected chunk isn't currently listed - buying an
         // unlisted chunk in a selection is a user-facing mistake, not a
         // silent partial purchase.
-        record Entry(String key, ClaimedChunk chunk, Team team, ChunkOwnership ownership) {
+        record Entry(String key, UUID teamId, ChunkOwnership ownership) {
         }
         List<Entry> entries = new java.util.ArrayList<>();
         for (String chunkKey : chunkKeys) {
-            ClaimedChunk chunk = resolveChunk(chunkKey);
-            Team team = chunk != null ? chunk.getTeamData().getTeam() : null;
-            if (chunk == null || team == null) {
+            UUID teamId = ownerTeam(server, chunkKey);
+            if (teamId == null) {
                 continue;
             }
-            ChunkOwnership ownership = savedData.getChunkOwnership(team.getTeamId(), chunkKey);
+            ChunkOwnership ownership = savedData.getChunkOwnership(teamId, chunkKey);
             if (!ownership.isListed()) {
                 buyer.displayClientMessage(Component.translatable("message.lc_ftb_hook.marketplace_not_listed", chunkKey), false);
                 return;
             }
-            entries.add(new Entry(chunkKey, chunk, team, ownership));
+            entries.add(new Entry(chunkKey, teamId, ownership));
         }
         if (entries.isEmpty()) {
             return;
@@ -227,7 +209,7 @@ public final class MarketplaceService {
 
         if (asCountry) {
             for (Entry entry : entries) {
-                if (!entry.team().getRankForPlayer(buyer.getUUID()).isOfficerOrBetter()) {
+                if (!Backends.claim().rankOf(server, entry.teamId(), buyer.getUUID()).isOfficerOrBetter()) {
                     buyer.displayClientMessage(Component.translatable("message.lc_ftb_hook.marketplace_denied"), false);
                     return;
                 }
@@ -238,9 +220,9 @@ public final class MarketplaceService {
                     buyer.displayClientMessage(Component.translatable("message.lc_ftb_hook.marketplace_already_yours"), false);
                     return;
                 }
-                Region entryRegion = RegionService.resolveRegion(server, entry.team().getTeamId(), entry.key());
+                Region entryRegion = RegionService.resolveRegion(server, entry.teamId(), entry.key());
                 String access = entryRegion.buyerAccess();
-                var rank = entry.team().getRankForPlayer(buyer.getUUID());
+                var rank = Backends.claim().rankOf(server, entry.teamId(), buyer.getUUID());
                 boolean allowed = switch (access) {
                     case dev.malik.lcftbhook.teams.MarketplaceTeamProperties.ACCESS_TEAM -> rank.isMemberOrBetter();
                     case dev.malik.lcftbhook.teams.MarketplaceTeamProperties.ACCESS_ALLIES -> rank.isAllyOrBetter();
@@ -257,7 +239,6 @@ public final class MarketplaceService {
         for (Entry entry : entries) {
             totalCopper += entry.ownership().listingPricePerChunk();
         }
-        MoneyValue total = MoneyUtil.fromCopper(totalCopper);
 
         if (asCountry) {
             // A multi-chunk "as country" selection can span several teams (the
@@ -265,69 +246,51 @@ public final class MarketplaceService {
             // pays only for its own chunks so one team can never end up
             // subsidizing another team's buyback.
             Map<UUID, Long> costPerTeam = new HashMap<>();
-            Map<UUID, Team> teamsById = new HashMap<>();
             for (Entry entry : entries) {
-                UUID teamId = entry.team().getTeamId();
-                teamsById.put(teamId, entry.team());
+                UUID teamId = entry.teamId();
                 costPerTeam.merge(teamId, entry.ownership().listingPricePerChunk(), Long::sum);
             }
-            Map<UUID, IBankAccount> accountsById = new HashMap<>();
+            Map<UUID, CurrencyAccount> accountsById = new HashMap<>();
             for (Map.Entry<UUID, Long> costEntry : costPerTeam.entrySet()) {
-                IBankAccount account = BankAccountHelper.getAccountForTeam(server, teamsById.get(costEntry.getKey()));
-                MoneyValue teamCost = MoneyUtil.fromCopper(costEntry.getValue());
-                if (account == null || !account.getMoneyStorage().containsValue(teamCost)) {
-                    buyer.displayClientMessage(Component.translatable(
-                            "message.lc_ftb_hook.insufficient_funds",
-                            MoneyMessageUtil.formatValue(teamCost),
-                            account != null ? MoneyMessageUtil.formatBalance(account) : MoneyMessageUtil.formatValue(MoneyValue.empty())
-                    ), false);
+                CurrencyAccount account = teamAccountOrNull(server, costEntry.getKey());
+                if (!canPay(buyer, account, costEntry.getValue())) {
                     return;
                 }
                 accountsById.put(costEntry.getKey(), account);
             }
-            for (Map.Entry<UUID, IBankAccount> accountEntry : accountsById.entrySet()) {
-                MoneyValue teamCost = MoneyUtil.fromCopper(costPerTeam.get(accountEntry.getKey()));
-                accountEntry.getValue().withdrawMoney(teamCost);
-                dev.malik.lcftbhook.bank.BankTransactionLog.logWithdraw(accountEntry.getValue(), "Chunk Purchase", teamCost);
+            for (Map.Entry<UUID, CurrencyAccount> accountEntry : accountsById.entrySet()) {
+                accountEntry.getValue().withdraw(costPerTeam.get(accountEntry.getKey()), "Chunk Purchase");
             }
         } else {
-            IBankAccount payerAccount = personalAccount(buyer.getUUID());
-            if (payerAccount == null || !payerAccount.getMoneyStorage().containsValue(total)) {
-                buyer.displayClientMessage(Component.translatable(
-                        "message.lc_ftb_hook.insufficient_funds",
-                        MoneyMessageUtil.formatValue(total),
-                        payerAccount != null ? MoneyMessageUtil.formatBalance(payerAccount) : MoneyMessageUtil.formatValue(MoneyValue.empty())
-                ), false);
+            CurrencyAccount payerAccount = personalAccountOrNull(server, buyer.getUUID());
+            if (!canPay(buyer, payerAccount, totalCopper)) {
                 return;
             }
-            payerAccount.withdrawMoney(total);
-            dev.malik.lcftbhook.bank.BankTransactionLog.logWithdraw(payerAccount, "Chunk Purchase", total);
+            payerAccount.withdraw(totalCopper, "Chunk Purchase");
         }
 
         for (Entry entry : entries) {
             long price = entry.ownership().listingPricePerChunk();
-            IBankAccount sellerAccount = entry.ownership().isStateOwned()
-                    ? BankAccountHelper.getAccountForTeam(server, entry.team())
-                    : personalAccount(entry.ownership().privateOwner());
+            CurrencyAccount sellerAccount = entry.ownership().isStateOwned()
+                    ? teamAccountOrNull(server, entry.teamId())
+                    : personalAccountOrNull(server, entry.ownership().privateOwner());
             if (sellerAccount != null) {
-                MoneyValue saleAmount = MoneyUtil.fromCopper(price);
-                sellerAccount.depositMoney(saleAmount);
-                dev.malik.lcftbhook.bank.BankTransactionLog.logDeposit(sellerAccount, "Chunk Sale", saleAmount);
+                sellerAccount.deposit(price, "Chunk Sale");
             }
 
             ChunkOwnership updated = asCountry
                     ? ChunkOwnership.resetToStateOwned()
                     : new ChunkOwnership(buyer.getUUID(), null, Map.of(), Map.of(), null);
-            savedData.setChunkOwnership(entry.team().getTeamId(), entry.key(), updated);
+            savedData.setChunkOwnership(entry.teamId(), entry.key(), updated);
             // A change of ownership resets protection to minimum until the
             // team's next successful upkeep settlement - same as a fresh claim.
-            savedData.markChunkUnsettled(entry.team().getTeamId(), entry.key());
+            savedData.markChunkUnsettled(entry.teamId(), entry.key());
         }
 
         broadcastChunkOwnership(server);
         broadcastUnsettledChunks(server);
         buyer.displayClientMessage(Component.translatable(
-                "message.lc_ftb_hook.marketplace_bought", entries.size(), MoneyMessageUtil.formatValue(total)
+                "message.lc_ftb_hook.marketplace_bought", entries.size(), Money.formatValue(totalCopper)
         ), false);
     }
 
@@ -344,21 +307,17 @@ public final class MarketplaceService {
      */
     public static void setChunkOverride(ServerPlayer actor, String chunkKey, ProtectionProperty property, String value) {
         MinecraftServer server = actor.server;
-        ClaimedChunk chunk = resolveChunk(chunkKey);
-        if (chunk == null) {
-            return;
-        }
-        Team team = chunk.getTeamData().getTeam();
-        if (team == null) {
+        UUID teamId = ownerTeam(server, chunkKey);
+        if (teamId == null) {
             return;
         }
         FtbHookSavedData savedData = FtbHookSavedData.get(server);
-        ChunkOwnership ownership = savedData.getChunkOwnership(team.getTeamId(), chunkKey);
+        ChunkOwnership ownership = savedData.getChunkOwnership(teamId, chunkKey);
         if (ownership.isStateOwned() || !actor.getUUID().equals(ownership.privateOwner())) {
             return;
         }
 
-        savedData.setChunkOwnership(team.getTeamId(), chunkKey, ownership.withOverrideProperty(property.id(), value));
+        savedData.setChunkOwnership(teamId, chunkKey, ownership.withOverrideProperty(property.id(), value));
         broadcastChunkOwnership(server);
     }
 
@@ -378,21 +337,17 @@ public final class MarketplaceService {
             return;
         }
         MinecraftServer server = actor.server;
-        ClaimedChunk chunk = resolveChunk(chunkKey);
-        if (chunk == null) {
-            return;
-        }
-        Team team = chunk.getTeamData().getTeam();
-        if (team == null) {
+        UUID teamId = ownerTeam(server, chunkKey);
+        if (teamId == null) {
             return;
         }
         FtbHookSavedData savedData = FtbHookSavedData.get(server);
-        ChunkOwnership ownership = savedData.getChunkOwnership(team.getTeamId(), chunkKey);
+        ChunkOwnership ownership = savedData.getChunkOwnership(teamId, chunkKey);
         if (ownership.isStateOwned() || !actor.getUUID().equals(ownership.privateOwner())) {
             return;
         }
 
-        savedData.setChunkOwnership(team.getTeamId(), chunkKey, ownership.withAccessList(property.id(), new PlayerAccessList(whitelist, players)));
+        savedData.setChunkOwnership(teamId, chunkKey, ownership.withAccessList(property.id(), new PlayerAccessList(whitelist, players)));
         broadcastChunkOwnership(server);
     }
 
@@ -403,16 +358,12 @@ public final class MarketplaceService {
      */
     public static void setLabel(ServerPlayer actor, String chunkKey, String label) {
         MinecraftServer server = actor.server;
-        ClaimedChunk chunk = resolveChunk(chunkKey);
-        if (chunk == null) {
-            return;
-        }
-        Team team = chunk.getTeamData().getTeam();
-        if (team == null) {
+        UUID teamId = ownerTeam(server, chunkKey);
+        if (teamId == null) {
             return;
         }
         FtbHookSavedData savedData = FtbHookSavedData.get(server);
-        ChunkOwnership ownership = savedData.getChunkOwnership(team.getTeamId(), chunkKey);
+        ChunkOwnership ownership = savedData.getChunkOwnership(teamId, chunkKey);
         if (ownership.isStateOwned() || !actor.getUUID().equals(ownership.privateOwner())) {
             return;
         }
@@ -421,7 +372,7 @@ public final class MarketplaceService {
         if (trimmed.length() > MAX_CHUNK_LABEL_LENGTH) {
             trimmed = trimmed.substring(0, MAX_CHUNK_LABEL_LENGTH);
         }
-        savedData.setChunkOwnership(team.getTeamId(), chunkKey, ownership.withLabel(trimmed));
+        savedData.setChunkOwnership(teamId, chunkKey, ownership.withLabel(trimmed));
         broadcastChunkOwnership(server);
     }
 
@@ -440,23 +391,19 @@ public final class MarketplaceService {
 
         record Entry(String key, ChunkOwnership ownership) {
         }
-        Team actorTeam = null;
+        UUID actorTeam = null;
         List<Entry> toExpropriate = new java.util.ArrayList<>();
         for (String chunkKey : chunkKeys) {
-            ClaimedChunk chunk = resolveChunk(chunkKey);
-            if (chunk == null) {
-                continue;
-            }
-            Team team = chunk.getTeamData().getTeam();
-            if (team == null || !team.getRankForPlayer(actor.getUUID()).isOfficerOrBetter()) {
+            UUID teamId = ownerTeam(server, chunkKey);
+            if (teamId == null || !Backends.claim().rankOf(server, teamId, actor.getUUID()).isOfficerOrBetter()) {
                 continue;
             }
             if (actorTeam == null) {
-                actorTeam = team;
-            } else if (!actorTeam.getTeamId().equals(team.getTeamId())) {
+                actorTeam = teamId;
+            } else if (!actorTeam.equals(teamId)) {
                 continue;
             }
-            ChunkOwnership ownership = savedData.getChunkOwnership(team.getTeamId(), chunkKey);
+            ChunkOwnership ownership = savedData.getChunkOwnership(teamId, chunkKey);
             if (ownership.isStateOwned()) {
                 continue;
             }
@@ -468,69 +415,85 @@ public final class MarketplaceService {
         }
 
         long totalCost = compensationPerChunk * toExpropriate.size();
-        IBankAccount teamAccount = BankAccountHelper.getAccountForTeam(server, actorTeam);
-        MoneyValue total = MoneyUtil.fromCopper(totalCost);
-        if (totalCost > 0 && (teamAccount == null || !teamAccount.getMoneyStorage().containsValue(total))) {
-            actor.displayClientMessage(Component.translatable(
-                    "message.lc_ftb_hook.insufficient_funds",
-                    MoneyMessageUtil.formatValue(total),
-                    teamAccount != null ? MoneyMessageUtil.formatBalance(teamAccount) : MoneyMessageUtil.formatValue(MoneyValue.empty())
-            ), false);
+        CurrencyAccount teamAccount = teamAccountOrNull(server, actorTeam);
+        if (totalCost > 0 && !canPay(actor, teamAccount, totalCost)) {
             return;
         }
-        if (totalCost > 0 && teamAccount != null) {
-            teamAccount.withdrawMoney(total);
-            dev.malik.lcftbhook.bank.BankTransactionLog.logWithdraw(teamAccount, "Chunk Expropriation", total);
+        if (totalCost > 0) {
+            teamAccount.withdraw(totalCost, "Chunk Expropriation");
         }
 
         Map<UUID, Integer> expropriatedCountByOwner = new HashMap<>();
         for (Entry entry : toExpropriate) {
             UUID ownerId = entry.ownership().privateOwner();
             if (compensationPerChunk > 0) {
-                IBankAccount ownerAccount = personalAccount(ownerId);
+                CurrencyAccount ownerAccount = personalAccountOrNull(server, ownerId);
                 if (ownerAccount != null) {
-                    MoneyValue compensation = MoneyUtil.fromCopper(compensationPerChunk);
-                    ownerAccount.depositMoney(compensation);
-                    dev.malik.lcftbhook.bank.BankTransactionLog.logDeposit(ownerAccount, "Chunk Expropriation", compensation);
+                    ownerAccount.deposit(compensationPerChunk, "Chunk Expropriation");
                 }
             }
             expropriatedCountByOwner.merge(ownerId, 1, Integer::sum);
-            savedData.setChunkOwnership(actorTeam.getTeamId(), entry.key(), ChunkOwnership.resetToStateOwned());
+            savedData.setChunkOwnership(actorTeam, entry.key(), ChunkOwnership.resetToStateOwned());
         }
 
         // Only the actor (whoever ran the expropriation) got a summary
         // before - each affected private owner had no idea their chunk(s)
         // were just taken back, if they happened to be online to see it.
-        Team notifiedActorTeam = actorTeam;
+        UUID notifiedActorTeam = actorTeam;
         for (Map.Entry<UUID, Integer> ownerEntry : expropriatedCountByOwner.entrySet()) {
             ServerPlayer ownerPlayer = server.getPlayerList().getPlayer(ownerEntry.getKey());
             if (ownerPlayer == null) {
                 continue;
             }
-            MoneyValue ownerCompensation = MoneyUtil.fromCopper(compensationPerChunk * ownerEntry.getValue());
             ownerPlayer.displayClientMessage(Component.translatable(
                     "message.lc_ftb_hook.marketplace_expropriated_notice",
                     ownerEntry.getValue(),
-                    WarService.displayName(notifiedActorTeam),
-                    MoneyMessageUtil.formatValue(ownerCompensation)
+                    WarService.displayName(server, notifiedActorTeam),
+                    Money.formatValue(compensationPerChunk * ownerEntry.getValue())
             ), false);
         }
 
         broadcastChunkOwnership(server);
         actor.displayClientMessage(Component.translatable(
-                "message.lc_ftb_hook.marketplace_expropriated", toExpropriate.size(), MoneyMessageUtil.formatValue(total)
+                "message.lc_ftb_hook.marketplace_expropriated", toExpropriate.size(), Money.formatValue(totalCost)
         ), false);
     }
 
-    private static IBankAccount personalAccount(UUID playerId) {
-        return PlayerBankReference.of(playerId).get();
-    }
-
-    private static ClaimedChunk resolveChunk(String chunkKey) {
-        if (!FTBChunksAPI.api().isManagerLoaded()) {
+    @Nullable
+    private static CurrencyAccount personalAccountOrNull(MinecraftServer server, UUID playerId) {
+        try {
+            return Backends.currency().playerAccount(server, playerId);
+        } catch (IllegalStateException missing) {
             return null;
         }
-        return FTBChunksAPI.api().getManager().getChunk(ChunkPosKey.toChunkDimPos(chunkKey));
+    }
+
+    @Nullable
+    private static CurrencyAccount teamAccountOrNull(MinecraftServer server, UUID teamId) {
+        try {
+            return Backends.currency().teamAccount(server, teamId);
+        } catch (IllegalStateException missing) {
+            return null;
+        }
+    }
+
+    /** Tells {@code payer} what's missing when {@code account} can't cover {@code cost}. */
+    private static boolean canPay(ServerPlayer payer, @Nullable CurrencyAccount account, long cost) {
+        if (account != null && account.canAfford(cost)) {
+            return true;
+        }
+        payer.displayClientMessage(Component.translatable(
+                "message.lc_ftb_hook.insufficient_funds",
+                Money.formatValue(cost),
+                account != null ? Money.formatBalance(account) : Money.formatValue(0L)
+        ), false);
+        return false;
+    }
+
+    @Nullable
+    private static UUID ownerTeam(MinecraftServer server, String chunkKey) {
+        ClaimPort.ChunkKey chunk = ChunkPosKey.toChunkKey(chunkKey);
+        return Backends.claim().ownerTeamOf(server, chunk.dimension(), chunk.pos().x, chunk.pos().z);
     }
 
     public static SyncChunkOwnershipPayload createOwnershipPayload(MinecraftServer server) {

@@ -29,8 +29,16 @@ public final class ModCompatibility {
         List<String> missing = new ArrayList<>();
         List<String> mismatched = new ArrayList<>();
 
-        checkVersion("ftbchunks", "FTB Chunks", REQUIRED_FTB_CHUNKS_VERSION, missing, mismatched);
-        checkVersion("lightmanscurrency", "Lightman's Currency", REQUIRED_LIGHTMANS_CURRENCY_VERSION, missing, mismatched);
+        requireAnyOf(missing, "a claim mod", "ftbchunks", "openpartiesandclaims");
+        requireAnyOf(missing, "a currency mod", "lightmanscurrency", "numismatics");
+        if (ModList.get().isLoaded("ftbchunks")) {
+            checkVersion("ftbchunks", "FTB Chunks", REQUIRED_FTB_CHUNKS_VERSION, missing, mismatched);
+        }
+        if (ModList.get().isLoaded("lightmanscurrency")) {
+            checkVersion("lightmanscurrency", "Lightman's Currency", REQUIRED_LIGHTMANS_CURRENCY_VERSION, missing, mismatched);
+        }
+        logOptionalVersion("numismatics", "Numismatics");
+        logOptionalVersion("openpartiesandclaims", "Open Parties and Claims");
         logOptionalVersion("xaeroworldmap", "Xaero's World Map");
 
         for (String warning : mismatched) {
@@ -62,6 +70,16 @@ public final class ModCompatibility {
     private static void logOptionalVersion(String modId, String displayName) {
         ModList.get().getModContainerById(modId).ifPresent(container ->
                 LCFtbHook.LOGGER.info("{} detected: version {}", displayName, container.getModInfo().getVersion()));
+    }
+
+    /** mods.toml can't express "at least one of" - each alternative is optional there, so it's checked here. */
+    private static void requireAnyOf(List<String> missingOut, String what, String... modIds) {
+        for (String modId : modIds) {
+            if (ModList.get().isLoaded(modId)) {
+                return;
+            }
+        }
+        missingOut.add("No " + what + " installed - need one of: " + String.join(", ", modIds) + ".");
     }
 
     private static void checkVersion(

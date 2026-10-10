@@ -1,15 +1,13 @@
 package dev.malik.lcftbhook.client;
 
-import dev.ftb.mods.ftbchunks.client.map.MapChunk;
-import dev.ftb.mods.ftbteams.api.Team;
 import dev.malik.lcftbhook.data.ChunkOwnership;
 import dev.malik.lcftbhook.data.ChunkPosKey;
+import dev.malik.lcftbhook.data.ClaimedChunkInfo;
 import dev.malik.lcftbhook.data.PlayerAccessList;
 import dev.malik.lcftbhook.data.ProtectionProperty;
 import dev.malik.lcftbhook.data.Region;
 import dev.malik.lcftbhook.service.ProtectionPriceDisplay;
 import dev.malik.lcftbhook.service.ProtectionResolution;
-import dev.malik.lcftbhook.util.MoneyUtil;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
@@ -28,6 +26,8 @@ import java.util.UUID;
  * FTB Chunks claim manager panel so both show identical information.
  */
 public final class ProtectionInfoLines {
+    private static final Region UNSETTLED_DEFAULT = Region.createDefault();
+
     private ProtectionInfoLines() {
     }
 
@@ -35,11 +35,12 @@ public final class ProtectionInfoLines {
         public static final Content EMPTY = new Content(List.of(), null);
     }
 
-    public static Content build(@Nullable MapChunk chunk, ResourceKey<Level> dimension, int chunkX, int chunkZ) {
-        if (chunk == null || chunk.getClaimedDate().isEmpty() || chunk.getTeam().isEmpty()) {
+    public static Content build(ResourceKey<Level> dimension, int chunkX, int chunkZ) {
+        ClaimedChunkInfo claim = ClientClaims.chunk(dimension, chunkX, chunkZ);
+        if (claim == null) {
             return Content.EMPTY;
         }
-        Team team = chunk.getTeam().get();
+        UUID teamId = claim.teamId();
 
         String chunkKey = ChunkPosKey.encode(dimension.location(), chunkX, chunkZ);
         ChunkOwnership ownership = ClientChunkOwnership.get(chunkKey);
@@ -50,15 +51,20 @@ public final class ProtectionInfoLines {
         // protection status needs to resolve correctly for every team, not
         // just the viewer's own, so a member of another team sees the exact
         // same info that team itself would.
-        Region region = regionId != null ? ClientPublicRegions.get(regionId) : ClientPublicRegions.getDefaultFor(team.getTeamId());
+        Region region = regionId != null ? ClientPublicRegions.get(regionId) : ClientPublicRegions.getDefaultFor(teamId);
+        if (region == null) {
+            // Same fallback as the server's RegionService.resolveRegion: a team
+            // without region data yet is enforced as an unprotected Default.
+            region = UNSETTLED_DEFAULT;
+        }
 
         boolean privatelyOwned = !ownership.isStateOwned();
 
         List<Component> lines = new ArrayList<>();
-        // The country/team name always shows - using FTB Teams' own configured
-        // color via getColoredName() - even for a privately-owned chunk, since
-        // the chunk legally stays part of the team's territory regardless.
-        lines.add(team.getColoredName());
+        // The country/team name always shows, in the team's own map color -
+        // even for a privately-owned chunk, since the chunk legally stays
+        // part of the team's territory regardless.
+        lines.add(ClientClaims.coloredName(teamId));
         if (privatelyOwned) {
             lines.add(Component.literal(resolveName(ownership.privateOwner())).withStyle(ChatFormatting.LIGHT_PURPLE));
         }
@@ -80,12 +86,12 @@ public final class ProtectionInfoLines {
         UUID localPlayer = Minecraft.getInstance().player != null ? Minecraft.getInstance().player.getUUID() : null;
         boolean forSaleVisible = ownership.isListed() && (
                 (localPlayer != null && localPlayer.equals(ownership.privateOwner()))
-                        || dev.malik.lcftbhook.client.BuyableChunkChecker.isBuyable(ownership, team, chunkKey, localPlayer)
+                        || dev.malik.lcftbhook.client.BuyableChunkChecker.isBuyable(ownership, teamId, chunkKey, localPlayer)
         );
         if (forSaleVisible) {
             lines.add(Component.translatable(
                     "gui.lc_ftb_hook.marketplace.for_sale_tooltip",
-                    MoneyUtil.fromCopper(ownership.listingPricePerChunk()).getText()
+                    dev.malik.lcftbhook.util.Money.format(ownership.listingPricePerChunk())
             ).withStyle(ChatFormatting.GOLD));
         }
         if (ClientUnsettledChunks.isUnsettled(chunkKey)) {
@@ -102,7 +108,7 @@ public final class ProtectionInfoLines {
                     pendingTarget != null ? pendingTarget.name() : "?"
             ).withStyle(ChatFormatting.YELLOW));
         }
-        if (chunk.getForceLoadedDate().isPresent()) {
+        if (claim.forceLoaded()) {
             lines.add(Component.translatable("gui.lc_ftb_hook.chunk_force_loaded_short").withStyle(ChatFormatting.RED));
         }
         if (ClientPendingState.isPendingForceLoad(dimension, chunkX, chunkZ)) {
@@ -123,9 +129,16 @@ public final class ProtectionInfoLines {
             // personally interact" boolean, since that read the same "false"
             // value backwards (green there meant "allowed", i.e. unprotected,
             // the opposite of the convention everywhere else).
+            // Main protections always, the (many) advanced ones only while
+            // they actually protect something - the rest is just counted.
+            int hiddenOpen = 0;
             for (ProtectionProperty property : ProtectionProperty.values()) {
                 String liveValue = ProtectionResolution.effectiveValue(region, ownership, property);
                 boolean protectedValue = !property.isAtMinimum(liveValue);
+                if (!property.isPrimary() && !protectedValue) {
+                    hiddenOpen++;
+                    continue;
+                }
                 MutableComponent line = Component.translatable("gui.lc_ftb_hook.protection_short." + property.id())
                         .append(": ")
                         .append(ProtectionValueFormat.formatValue(liveValue, property).copy()
@@ -142,6 +155,10 @@ public final class ProtectionInfoLines {
                     }
                 }
                 lines.add(line);
+            }
+            if (hiddenOpen > 0) {
+                lines.add(Component.translatable("gui.lc_ftb_hook.protection_more_open", hiddenOpen)
+                        .withStyle(ChatFormatting.DARK_GRAY, ChatFormatting.ITALIC));
             }
         }
 

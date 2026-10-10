@@ -2,17 +2,14 @@ package dev.malik.lcftbhook;
 
 import com.mojang.logging.LogUtils;
 import dev.malik.lcftbhook.config.LCFtbHookConfig;
+import dev.malik.lcftbhook.config.ProtectionPriceConfig;
+import dev.malik.lcftbhook.port.protection.ProtectionFieldSet;
 import dev.malik.lcftbhook.command.ClearWarsCommand;
 import dev.malik.lcftbhook.command.ForceUpkeepCommand;
-import dev.malik.lcftbhook.command.SeedTestTeamsCommand;
 import dev.malik.lcftbhook.command.RuntimeConfigCommand;
 import dev.malik.lcftbhook.command.ServerAccountCommand;
 import dev.malik.lcftbhook.command.UpkeepDetailsCommand;
 import dev.malik.lcftbhook.command.UpkeepPriorityCommand;
-import dev.malik.lcftbhook.handler.ChunkClaimHandler;
-import dev.malik.lcftbhook.handler.ForceLoadHandler;
-import dev.malik.lcftbhook.handler.TaxCollectorPlacementHandler;
-import dev.malik.lcftbhook.handler.TeamLifecycleHandler;
 import dev.malik.lcftbhook.network.BuyChunksPayload;
 import dev.malik.lcftbhook.network.CancelListingPayload;
 import dev.malik.lcftbhook.network.CreateRegionAndAssignPayload;
@@ -37,8 +34,8 @@ import dev.malik.lcftbhook.network.RequestWarStatePayload;
 import dev.malik.lcftbhook.network.SyncWarStatePayload;
 import dev.malik.lcftbhook.network.ToggleWarPayload;
 import dev.malik.lcftbhook.client.ClientJoinSyncHandler;
-import dev.malik.lcftbhook.client.ClientPendingRefreshHandler;
-import dev.malik.lcftbhook.service.ClaimVisibilityService;
+import dev.malik.lcftbhook.client.ftb.ClientPendingRefreshHandler;
+import dev.malik.lcftbhook.service.ClaimMapSync;
 import dev.malik.lcftbhook.service.UpkeepService;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.IEventBus;
@@ -53,6 +50,9 @@ import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 import org.slf4j.Logger;
 
+import java.util.ArrayList;
+import java.util.List;
+
 @Mod(LCFtbHook.MOD_ID)
 public class LCFtbHook {
     public static final String MOD_ID = "lc_ftb_hook";
@@ -62,29 +62,74 @@ public class LCFtbHook {
         ModCompatibility.validateOrThrow();
 
         modContainer.registerConfig(ModConfig.Type.SERVER, LCFtbHookConfig.SERVER_SPEC);
+        modContainer.registerConfig(ModConfig.Type.SERVER, ProtectionPriceConfig.build(installedProtectionFieldSets()),
+                ProtectionPriceConfig.FILE_NAME);
 
         modEventBus.addListener(this::registerPayloads);
         NeoForge.EVENT_BUS.addListener(UpkeepDetailsCommand::register);
         NeoForge.EVENT_BUS.addListener(UpkeepPriorityCommand::register);
         NeoForge.EVENT_BUS.addListener(ClearWarsCommand::register);
-        NeoForge.EVENT_BUS.addListener(SeedTestTeamsCommand::register);
         NeoForge.EVENT_BUS.addListener(ForceUpkeepCommand::register);
         NeoForge.EVENT_BUS.addListener(ServerAccountCommand::register);
+        NeoForge.EVENT_BUS.addListener(dev.malik.lcftbhook.command.TeamBankCommand::register);
         NeoForge.EVENT_BUS.addListener(RuntimeConfigCommand::register);
 
-        ClaimVisibilityService.register();
+        // Game events below are guarded: an exception of ours must not crash the server tick or startup.
+        NeoForge.EVENT_BUS.addListener((net.neoforged.neoforge.event.server.ServerAboutToStartEvent event) ->
+                dev.malik.lcftbhook.util.Guard.run("hook data backup", () -> dev.malik.lcftbhook.data.SavedDataBackups.snapshot(event.getServer())));
+        NeoForge.EVENT_BUS.addListener((net.neoforged.neoforge.event.server.ServerStartedEvent event) ->
+                dev.malik.lcftbhook.util.Guard.run("server started", () -> dev.malik.lcftbhook.service.TeamLifecycleService.onServerStarted(event.getServer())));
+        NeoForge.EVENT_BUS.addListener((net.neoforged.neoforge.event.server.ServerStoppedEvent event) -> {
+            dev.malik.lcftbhook.port.Backends.reset();
+            ClaimMapSync.reset();
+        });
+        NeoForge.EVENT_BUS.addListener((net.neoforged.neoforge.event.tick.ServerTickEvent.Post event) ->
+                dev.malik.lcftbhook.util.Guard.run("claim map sync tick", () -> ClaimMapSync.onServerTick(event.getServer())));
+        NeoForge.EVENT_BUS.addListener((net.neoforged.neoforge.event.entity.player.PlayerEvent.PlayerLoggedInEvent event) -> {
+            if (event.getEntity() instanceof net.minecraft.server.level.ServerPlayer player) {
+                dev.malik.lcftbhook.util.Guard.run("claim map sync on join", () -> ClaimMapSync.onPlayerJoin(player));
+            }
+        });
 
         NeoForge.EVENT_BUS.register(new UpkeepService());
-        NeoForge.EVENT_BUS.register(new TeamLifecycleHandler());
-        NeoForge.EVENT_BUS.register(new TaxCollectorPlacementHandler());
 
-        new ChunkClaimHandler();
-        new ForceLoadHandler();
+        // Backend integrations: each only touches its own mod's classes, and
+        // only when that mod is installed.
+        if (ModList.get().isLoaded("ftbchunks")) {
+            dev.malik.lcftbhook.adapter.ftb.FtbIntegration.register();
+        }
+        if (ModList.get().isLoaded("openpartiesandclaims")) {
+            dev.malik.lcftbhook.adapter.opac.OpacIntegration.register();
+            // Rewords OPAC texts: force-loads are queued until the next upkeep, and a claim's
+            // title is just its land/region name (set by OpacProtectionSync), without the owner.
+            dev.malik.lcftbhook.util.BuiltInResourcePacks.register(modEventBus, "opac_texts", "Open Parties and Claims texts");
+        }
+        if (ModList.get().isLoaded("lightmanscurrency")) {
+            dev.malik.lcftbhook.adapter.lightmanscurrency.LcIntegration.register();
+        }
+        if (ModList.get().isLoaded("numismatics")) {
+            dev.malik.lcftbhook.adapter.numismatics.NumismaticsCoinIcons.register(modEventBus);
+        }
 
         if (FMLEnvironment.dist == Dist.CLIENT) {
-            new ClientPendingRefreshHandler();
+            if (ModList.get().isLoaded("ftbteams")) {
+                new ClientPendingRefreshHandler();
+            }
             new ClientJoinSyncHandler();
+            dev.malik.lcftbhook.client.ClientKeyBindings.register(modEventBus);
         }
+    }
+
+    /** Protection fields of every installed claim mod - each gets its own price section. */
+    private static List<ProtectionFieldSet> installedProtectionFieldSets() {
+        List<ProtectionFieldSet> sets = new ArrayList<>();
+        if (ModList.get().isLoaded("ftbchunks")) {
+            sets.add(dev.malik.lcftbhook.adapter.ftb.FtbProtectionFields.SET);
+        }
+        if (ModList.get().isLoaded("openpartiesandclaims")) {
+            sets.add(dev.malik.lcftbhook.adapter.opac.OpacProtectionFields.SET);
+        }
+        return sets;
     }
 
     private void registerPayloads(RegisterPayloadHandlersEvent event) {
@@ -108,6 +153,16 @@ public class LCFtbHook {
                 SyncRegionsPayload.TYPE,
                 SyncRegionsPayload.STREAM_CODEC,
                 SyncRegionsPayload::handleClient
+        );
+        registrar.playToClient(
+                dev.malik.lcftbhook.network.SyncClaimMapPayload.TYPE,
+                dev.malik.lcftbhook.network.SyncClaimMapPayload.STREAM_CODEC,
+                dev.malik.lcftbhook.network.SyncClaimMapPayload::handleClient
+        );
+        registrar.playToClient(
+                dev.malik.lcftbhook.network.SyncViewerRanksPayload.TYPE,
+                dev.malik.lcftbhook.network.SyncViewerRanksPayload.STREAM_CODEC,
+                dev.malik.lcftbhook.network.SyncViewerRanksPayload::handleClient
         );
         registrar.playToClient(
                 SyncRegionMembershipPayload.TYPE,

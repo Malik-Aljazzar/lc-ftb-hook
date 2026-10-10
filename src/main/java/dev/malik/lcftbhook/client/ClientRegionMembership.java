@@ -1,6 +1,5 @@
 package dev.malik.lcftbhook.client;
 
-import dev.ftb.mods.ftbchunks.client.map.MapManager;
 
 import java.util.Map;
 import java.util.UUID;
@@ -16,7 +15,7 @@ public final class ClientRegionMembership {
         chunkRegions = Map.copyOf(keys);
         // Region borders are baked into the map texture, re-render so
         // membership changes show up immediately.
-        MapManager.getInstance().ifPresent(manager -> manager.updateAllRegions(false));
+        ClientUiRefresh.redrawMap();
         dev.malik.lcftbhook.client.xaero.XaeroHighlightRefresh.refreshAll();
     }
 

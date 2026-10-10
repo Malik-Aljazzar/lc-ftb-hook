@@ -1,0 +1,5 @@
+{
+  "gui.xaero_claims_forceloaded": "Force-load queued - it takes effect at the next upkeep period.",
+  "gui.xaero_claims_unforceloaded": "Force-load removal queued - it takes effect at the next upkeep period.",
+  "gui.xaero_pac_full_title_format": "%1$s"
+}

@@ -2,14 +2,9 @@ package dev.malik.lcftbhook.command;
 
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.context.CommandContext;
-import dev.ftb.mods.ftbteams.api.FTBTeamsAPI;
-import dev.ftb.mods.ftbteams.api.Team;
 import dev.malik.lcftbhook.LCFtbHook;
-import dev.malik.lcftbhook.bank.BankAccountHelper;
 import dev.malik.lcftbhook.service.ProtectionPriceDisplay;
 import dev.malik.lcftbhook.service.UpkeepPriorityService;
-import dev.malik.lcftbhook.util.MoneyMessageUtil;
-import dev.malik.lcftbhook.util.MoneyUtil;
 import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
@@ -32,16 +27,17 @@ public final class UpkeepPriorityCommand {
     private static int showPriority(CommandContext<CommandSourceStack> context) {
         CommandSourceStack source = context.getSource();
         ServerPlayer player = source.getPlayer();
-        if (player == null || !FTBTeamsAPI.api().isManagerLoaded()) {
+        if (player == null) {
             return 0;
         }
 
-        Team team = FTBTeamsAPI.api().getManager().getTeamForPlayer(player).orElse(null);
-        if (team == null) {
+        java.util.UUID teamId = dev.malik.lcftbhook.service.TeamCatalog.teamOf(player.server, player.getUUID());
+        if (teamId == null) {
             return 0;
         }
 
-        if (team.isPartyTeam() && !BankAccountHelper.canPurchaseForTeam(player.server, team, player.getUUID())) {
+        if (dev.malik.lcftbhook.service.TeamCatalog.isParty(player.server, teamId)
+                && !dev.malik.lcftbhook.port.Backends.currency().canPlayerSpend(player.server, teamId, player.getUUID())) {
             player.displayClientMessage(
                     Component.translatable("message.lc_ftb_hook.upkeep_priority.denied"),
                     false
@@ -49,7 +45,7 @@ public final class UpkeepPriorityCommand {
             return 0;
         }
 
-        var entries = UpkeepPriorityService.buildOrder(source.getServer(), team);
+        var entries = UpkeepPriorityService.buildOrder(source.getServer(), teamId);
         if (entries.isEmpty()) {
             player.displayClientMessage(
                     Component.translatable("message.lc_ftb_hook.upkeep_priority.empty"),
@@ -90,7 +86,7 @@ public final class UpkeepPriorityCommand {
             message.append(Component.literal(" [").withStyle(ChatFormatting.DARK_GRAY));
             message.append(Component.translatable(kindKey).withStyle(kindColor));
             message.append(Component.literal("] — ").withStyle(ChatFormatting.DARK_GRAY));
-            message.append(MoneyMessageUtil.formatValue(MoneyUtil.fromCopper(entry.costCopper())).copy().withStyle(ChatFormatting.GOLD));
+            message.append(dev.malik.lcftbhook.util.Money.formatValue(entry.costCopper()).copy().withStyle(ChatFormatting.GOLD));
             message.append(Component.literal(" / ").withStyle(ChatFormatting.DARK_GRAY));
             message.append(period.copy().withStyle(ChatFormatting.GRAY));
             message.append("\n");

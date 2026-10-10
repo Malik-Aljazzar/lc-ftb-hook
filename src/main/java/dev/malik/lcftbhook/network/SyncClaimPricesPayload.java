@@ -4,8 +4,7 @@ import dev.malik.lcftbhook.LCFtbHook;
 import dev.malik.lcftbhook.client.ClientClaimPrices;
 import dev.malik.lcftbhook.client.ClientClaimVisibilityState;
 import dev.malik.lcftbhook.client.ClientWarState;
-import dev.malik.lcftbhook.client.PendingStateUiRefresh;
-import dev.malik.lcftbhook.client.TeamUiRefresh;
+import dev.malik.lcftbhook.client.ClientUiRefresh;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
@@ -28,14 +27,10 @@ public record SyncClaimPricesPayload(
         boolean hasCountryBalance,
         boolean countryBalanceEmpty,
         String countryBalanceText,
-        long mobGriefProtectionPrice,
-        long explosionProtectionPrice,
-        long pvpDisablePrice,
-        long blockInteractProtectionPrice,
-        long blockEditProtectionPrice,
-        long entityInteractProtectionPrice,
+        java.util.List<dev.malik.lcftbhook.data.ProtectionProperty> protectionFields,
         boolean warEnabled,
-        boolean claimVisibilityLocked
+        boolean claimVisibilityLocked,
+        boolean canManageClaims
 ) implements CustomPacketPayload {
     public static final Type<SyncClaimPricesPayload> TYPE = new Type<>(ResourceLocation.fromNamespaceAndPath(LCFtbHook.MOD_ID, "sync_claim_prices"));
     public static final StreamCodec<FriendlyByteBuf, SyncClaimPricesPayload> STREAM_CODEC = StreamCodec.of(
@@ -55,14 +50,10 @@ public record SyncClaimPricesPayload(
                 buffer.writeBoolean(payload.hasCountryBalance);
                 buffer.writeBoolean(payload.countryBalanceEmpty);
                 buffer.writeUtf(payload.countryBalanceText);
-                buffer.writeLong(payload.mobGriefProtectionPrice);
-                buffer.writeLong(payload.explosionProtectionPrice);
-                buffer.writeLong(payload.pvpDisablePrice);
-                buffer.writeLong(payload.blockInteractProtectionPrice);
-                buffer.writeLong(payload.blockEditProtectionPrice);
-                buffer.writeLong(payload.entityInteractProtectionPrice);
+                ProtectionFieldCodec.write(buffer, payload.protectionFields);
                 buffer.writeBoolean(payload.warEnabled());
                 buffer.writeBoolean(payload.claimVisibilityLocked());
+                buffer.writeBoolean(payload.canManageClaims());
             },
             buffer -> new SyncClaimPricesPayload(
                     buffer.readLong(),
@@ -80,12 +71,8 @@ public record SyncClaimPricesPayload(
                     buffer.readBoolean(),
                     buffer.readBoolean(),
                     buffer.readUtf(),
-                    buffer.readLong(),
-                    buffer.readLong(),
-                    buffer.readLong(),
-                    buffer.readLong(),
-                    buffer.readLong(),
-                    buffer.readLong(),
+                    ProtectionFieldCodec.read(buffer),
+                    buffer.readBoolean(),
                     buffer.readBoolean(),
                     buffer.readBoolean()
             )
@@ -114,17 +101,13 @@ public record SyncClaimPricesPayload(
                     payload.hasCountryBalance(),
                     payload.countryBalanceEmpty(),
                     payload.countryBalanceText(),
-                    payload.mobGriefProtectionPrice(),
-                    payload.explosionProtectionPrice(),
-                    payload.pvpDisablePrice(),
-                    payload.blockInteractProtectionPrice(),
-                    payload.blockEditProtectionPrice(),
-                    payload.entityInteractProtectionPrice()
+                    payload.protectionFields(),
+                    payload.canManageClaims()
             );
             ClientWarState.setWarModuleEnabled(payload.warEnabled());
             ClientClaimVisibilityState.setLocked(payload.claimVisibilityLocked());
-            PendingStateUiRefresh.refreshOpenScreens();
-            TeamUiRefresh.refreshMyTeamScreenIfOpen();
+            ClientUiRefresh.refreshOpenScreens();
+            ClientUiRefresh.refreshTeamScreen();
         });
     }
 }

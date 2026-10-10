@@ -1,13 +1,11 @@
 package dev.malik.lcftbhook.service;
 
-import dev.ftb.mods.ftbteams.api.Team;
 import dev.malik.lcftbhook.data.FtbHookSavedData;
 import dev.malik.lcftbhook.data.ProtectionProperty;
 import dev.malik.lcftbhook.data.Region;
 import dev.malik.lcftbhook.data.RegionPropertyKey;
 import dev.malik.lcftbhook.data.TeamPendingState;
 import dev.malik.lcftbhook.service.ProtectionDismantleOrder.DismantleStep;
-import dev.malik.lcftbhook.teams.FtbTeamCatalog;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 
@@ -41,10 +39,9 @@ public final class UpkeepPriorityService {
     private UpkeepPriorityService() {
     }
 
-    public static List<PriorityEntry> buildOrder(MinecraftServer server, Team team) {
+    public static List<PriorityEntry> buildOrder(MinecraftServer server, UUID teamId) {
         FtbHookSavedData savedData = FtbHookSavedData.get(server);
-        TeamPendingState pendingState = savedData.getPendingState(team.getTeamId());
-        UUID teamId = team.getTeamId();
+        TeamPendingState pendingState = savedData.getPendingState(teamId);
         List<PriorityEntry> entries = new ArrayList<>();
         int priority = 1;
 
@@ -58,41 +55,47 @@ public final class UpkeepPriorityService {
                     EntryKind.PROTECTION,
                     key,
                     protectionLabel(savedData, teamId, step),
-                    protectionUpkeepCopper(server, team, pendingState, step)
+                    protectionUpkeepCopper(server, teamId, pendingState, step)
             ));
         }
 
         // Between protections (restored first, dismantled last) and wars
         // (dismantled first) - matches the actual settlement order in
         // UpkeepSettlementService.settle.
-        long forceLoadPrice = dev.malik.lcftbhook.config.LCFtbHookConfig.SERVER.forceLoadUpkeepPrice.get();
-        for (String chunkKey : PendingChangeService.forceLoadDismantleOrder(team)) {
-            entries.add(new PriorityEntry(
-                    priority++,
-                    EntryKind.FORCE_LOAD,
-                    chunkKey,
-                    forceLoadLabel(chunkKey),
-                    forceLoadPrice
-            ));
+        // Raw config value is tenths of a copper (see LCFtbHookConfig's
+        // [general] note) - converted to whole copper for display here.
+        long forceLoadPrice = Math.floorDiv(dev.malik.lcftbhook.config.LCFtbHookConfig.SERVER.forceLoadUpkeepPrice.get(), 10L);
+        // Region-grouped, all-or-nothing (see PendingChangeService.RegionForceLoadGroup) -
+        // still listed one chunk per row here since /upkeep_priority is a flat
+        // display, but chunks from the same region are always adjacent and in
+        // the exact order they'd actually be dropped/restored together.
+        for (PendingChangeService.RegionForceLoadGroup group : PendingChangeService.forceLoadDismantleOrder(server, teamId)) {
+            for (String chunkKey : group.chunkKeys()) {
+                entries.add(new PriorityEntry(
+                        priority++,
+                        EntryKind.FORCE_LOAD,
+                        chunkKey,
+                        forceLoadLabel(chunkKey),
+                        forceLoadPrice
+                ));
+            }
         }
 
         List<UUID> outgoing = new ArrayList<>(savedData.getWarTargets(teamId));
         outgoing.sort(Comparator.comparingLong(targetId -> {
-            Team target = FtbTeamCatalog.resolve(server, targetId);
-            return target == null ? 0L : WarService.costToDeclareWar(server, team, target);
+            return TeamCatalog.exists(server, targetId) ? WarCostService.costToDeclareWar(server, teamId, targetId) : 0L;
         }));
 
         for (UUID targetId : outgoing) {
-            Team target = FtbTeamCatalog.resolve(server, targetId);
-            if (target == null) {
+            if (!TeamCatalog.exists(server, targetId)) {
                 continue;
             }
             entries.add(new PriorityEntry(
                     priority++,
                     EntryKind.OUTGOING_WAR,
                     targetId.toString(),
-                    Component.literal(WarService.displayName(target)).withStyle(net.minecraft.ChatFormatting.YELLOW),
-                    WarService.costToDeclareWar(server, team, target)
+                    Component.literal(WarService.displayName(server, targetId)).withStyle(net.minecraft.ChatFormatting.YELLOW),
+                    WarCostService.costToDeclareWar(server, teamId, targetId)
             ));
         }
 
@@ -117,13 +120,13 @@ public final class UpkeepPriorityService {
 
     private static long protectionUpkeepCopper(
             MinecraftServer server,
-            Team team,
+            UUID teamId,
             TeamPendingState pendingState,
             DismantleStep step
     ) {
-        ProtectionPricing.ChunkCounts counts = ProtectionPricing.countBillableChunks(server, team, pendingState);
-        Map<String, String> pricing = ProtectionRollbackService.pricingProperties(server, team, pendingState);
-        long withLive = ProtectionPricing.calculateProtectionCopper(server, team.getTeamId(),
+        ProtectionPricing.ChunkCounts counts = ProtectionPricing.countBillableChunks(server, teamId, pendingState);
+        Map<String, String> pricing = ProtectionRollbackService.pricingProperties(server, teamId, pendingState);
+        long withLive = ProtectionPricing.calculateProtectionCopper(server, teamId,
                 new TeamPendingState(pricing, pendingState.pendingForceLoads(), pendingState.pendingForceUnloads(),
                         pendingState.pendingRegionAssignments(), pendingState.pendingWarDeclares(), pendingState.pendingWarEnds()),
                 counts);
@@ -132,7 +135,7 @@ public final class UpkeepPriorityService {
         java.util.Map<String, String> atMinimum = new java.util.HashMap<>(pricing);
         atMinimum.put(key, step.property().minimumSerialized());
 
-        long atMin = ProtectionPricing.calculateProtectionCopper(server, team.getTeamId(),
+        long atMin = ProtectionPricing.calculateProtectionCopper(server, teamId,
                 new TeamPendingState(atMinimum, pendingState.pendingForceLoads(), pendingState.pendingForceUnloads(),
                         pendingState.pendingRegionAssignments(), pendingState.pendingWarDeclares(), pendingState.pendingWarEnds()),
                 counts);

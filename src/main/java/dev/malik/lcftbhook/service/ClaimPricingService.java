@@ -58,8 +58,15 @@ public final class ClaimPricingService {
         return paidChunksAlreadyClaimed / size;
     }
 
+    /**
+     * All three modes compute in TENTHS of a copper (the config's own base
+     * unit - see {@code LCFtbHookConfig}'s comment at the top of
+     * {@code [general]}); the single {@code /10} floor-divide at the end
+     * converts to actual whole copper exactly once, avoiding compounding
+     * rounding error from converting each intermediate term separately.
+     */
     private static long priceForIncrement(int increment) {
-        return switch (LCFtbHookConfig.SERVER.claimPricingMode.get()) {
+        long tenths = switch (LCFtbHookConfig.SERVER.claimPricingMode.get()) {
             case CONSTANT -> LCFtbHookConfig.SERVER.claimPrice.get();
             case LINEAR -> {
                 long base = LCFtbHookConfig.SERVER.claimBasePrice.get();
@@ -72,5 +79,6 @@ public final class ClaimPricingService {
                 yield (long) Math.floor(base * Math.pow(1.0D + percent, increment));
             }
         };
+        return Math.floorDiv(tenths, 10L);
     }
 }

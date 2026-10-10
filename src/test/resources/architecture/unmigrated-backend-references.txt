@@ -1,0 +1,5 @@
+# Files that still reference a backend mod API (FTB, Lightman's Currency, OPAC,
+# Numismatics, Xaero) outside that backend's own zone package - see
+# BackendIsolationTest and ARCHITECTURE.md. This list may only SHRINK: remove
+# a file here once it's migrated onto the ports (the test fails otherwise).
+# Baseline 2026-09-28: 114 files. Since 2026-09-29: none - keep it that way.

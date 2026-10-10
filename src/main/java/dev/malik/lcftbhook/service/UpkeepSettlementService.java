@@ -1,18 +1,12 @@
 package dev.malik.lcftbhook.service;
 
-import dev.ftb.mods.ftbchunks.api.ChunkTeamData;
-import dev.ftb.mods.ftbchunks.api.FTBChunksAPI;
-import dev.ftb.mods.ftbteams.api.Team;
 import net.minecraft.network.chat.Component;
-import dev.malik.lcftbhook.bank.BankAccountHelper;
 import dev.malik.lcftbhook.data.FtbHookSavedData;
 import dev.malik.lcftbhook.data.TeamPendingState;
 import dev.malik.lcftbhook.network.PendingStateSync;
+import dev.malik.lcftbhook.port.Backends;
+import dev.malik.lcftbhook.port.currency.CurrencyAccount;
 import dev.malik.lcftbhook.service.ProtectionDismantleOrder.DismantleStep;
-import dev.malik.lcftbhook.teams.FtbTeamCatalog;
-import dev.malik.lcftbhook.util.MoneyUtil;
-import io.github.lightman314.lightmanscurrency.api.money.bank.IBankAccount;
-import io.github.lightman314.lightmanscurrency.api.money.value.MoneyValue;
 import net.minecraft.server.MinecraftServer;
 
 import java.util.ArrayList;
@@ -31,7 +25,7 @@ import java.util.UUID;
 public final class UpkeepSettlementService {
     public record SettlementResult(
             boolean paid,
-            MoneyValue charged,
+            long chargedCopper,
             TeamPendingState pendingState,
             int forceLoadCount,
             List<DismantleStep> suspendedProtections,
@@ -39,11 +33,12 @@ public final class UpkeepSettlementService {
             List<DismantleStep> restoredProtections,
             List<String> restoredWarNames,
             List<DismantleStep> unaffordableRestorations,
-            List<String> unaffordableWarNames
+            List<String> unaffordableWarNames,
+            int unaffordableForceLoadCount
     ) {
         public static SettlementResult skipped() {
-            return new SettlementResult(false, MoneyValue.empty(), new TeamPendingState(), 0,
-                    List.of(), List.of(), List.of(), List.of(), List.of(), List.of());
+            return new SettlementResult(false, 0L, new TeamPendingState(), 0,
+                    List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), 0);
         }
 
         public boolean anythingSuspended() {
@@ -58,11 +53,10 @@ public final class UpkeepSettlementService {
     private UpkeepSettlementService() {
     }
 
-    public static SettlementResult settle(MinecraftServer server, Team team) {
+    public static SettlementResult settle(MinecraftServer server, UUID teamId) {
         FtbHookSavedData savedData = FtbHookSavedData.get(server);
-        UUID teamId = team.getTeamId();
         TeamPendingState pendingState = savedData.getPendingState(teamId);
-        IBankAccount account = BankAccountHelper.getAccountForTeam(server, team);
+        CurrencyAccount account = Backends.currency().teamAccount(server, teamId);
 
         List<DismantleStep> suspended = new ArrayList<>();
         List<String> suspendedWarNames = new ArrayList<>();
@@ -71,22 +65,45 @@ public final class UpkeepSettlementService {
         List<DismantleStep> unaffordable = new ArrayList<>();
         List<String> unaffordableWarNames = new ArrayList<>();
 
-        boolean chargeProtection = UpkeepGating.shouldChargeProtection(server, team);
-        boolean chargeForceLoad = UpkeepGating.shouldChargeForceLoad(server, team);
+        boolean chargeProtection = UpkeepGating.shouldChargeProtection(server, teamId);
+        boolean chargeForceLoad = UpkeepGating.shouldChargeForceLoad(server, teamId);
+        // Skips ALL war processing outright when the war system is off - not
+        // just billing (WarCostService already zeroes war cost when
+        // disabled), the settlement loops themselves. Without this gate, any
+        // war data that predates the war system being disabled (e.g. it was
+        // turned off by directly editing the config file/server restart
+        // rather than the runtime toggle, which is the only path that
+        // actually purges existing war state - see
+        // WarService#setWarSystemEnabled) would still get reported as
+        // "queued/unaffordable" in upkeep messages even though wars are
+        // supposedly completely off - confusing and wrong from the player's
+        // perspective.
+        boolean warsActive = WarService.isEnabled();
 
         ProtectionService.setApplying(true);
         try {
-            pendingState = RegionService.applyPendingRegionAssignments(server, team, pendingState);
-            pendingState = applyUserWarEnds(server, team, savedData, pendingState);
+            pendingState = RegionService.applyPendingRegionAssignments(server, teamId, pendingState);
+            if (warsActive) {
+                pendingState = applyUserWarEnds(server, teamId, savedData, pendingState);
+            }
+            int unaffordableForceLoadCount = 0;
             if (chargeProtection) {
                 // Frozen while paused: no restores are attempted (protection
                 // costs are already gated to 0 inside ProtectionPricing, but
                 // that alone doesn't stop these loops from running against
                 // whatever forceload/war cost remains, so gate explicitly).
-                pendingState = restorePendingProtections(server, team, pendingState, account, restored, unaffordable);
+                pendingState = restorePendingProtections(server, teamId, pendingState, account, restored, unaffordable);
+                // Whatever's still pending-load right after this pass's
+                // restore attempt is exactly what couldn't be activated -
+                // mirrors how unaffordableOut/unaffordableWarNamesOut above
+                // are captured, so a force-load stuck waiting on funds shows
+                // up in the same "unaffordable" message instead of nowhere.
+                unaffordableForceLoadCount = pendingState.pendingForceLoads().size();
             }
-            pendingState = restorePendingWars(server, team, savedData, pendingState, account, restoredWarNames, unaffordableWarNames);
-            pendingState = dismantleOutgoingWarsUntilAffordable(server, team, savedData, pendingState, account, suspendedWarNames);
+            if (warsActive) {
+                pendingState = restorePendingWars(server, teamId, savedData, pendingState, account, restoredWarNames, unaffordableWarNames);
+                pendingState = dismantleOutgoingWarsUntilAffordable(server, teamId, savedData, pendingState, account, suspendedWarNames);
+            }
             // Force-loads sit between wars and protections in dismantle
             // priority - wars are cut first, then force-loads one chunk at a
             // time (stopping as soon as affordable, same as protections and
@@ -97,37 +114,36 @@ public final class UpkeepSettlementService {
             // tail of restorePendingProtections, i.e. protections restored
             // first, force-loads second, wars last (see that method).
             if (chargeForceLoad) {
-                pendingState = dismantleForceLoadsUntilAffordable(server, team, pendingState, account);
+                pendingState = dismantleForceLoadsUntilAffordable(server, teamId, pendingState, account);
             }
             if (chargeProtection) {
-                pendingState = dismantleProtectionsUntilAffordable(server, team, pendingState, account, suspended);
+                pendingState = dismantleProtectionsUntilAffordable(server, teamId, pendingState, account, suspended);
             }
 
-            MoneyValue cost = MoneyUtil.fromCopper(WarService.calculateTotalUpkeepCostCopper(server, team, pendingState));
-            if (cost.isEmpty()) {
+            long costCopper = WarCostService.calculateTotalUpkeepCostCopper(server, teamId, pendingState);
+            if (costCopper <= 0L) {
                 savedData.setPendingState(teamId, pendingState);
                 savedData.setProtectionLocked(teamId, false);
-                syncState(server, team);
-                return new SettlementResult(true, MoneyValue.empty(), pendingState, forceLoadCount(team), List.copyOf(suspended), List.copyOf(suspendedWarNames), List.copyOf(restored), List.copyOf(restoredWarNames), List.copyOf(unaffordable), List.copyOf(unaffordableWarNames));
+                syncState(server, teamId);
+                return new SettlementResult(true, 0L, pendingState, forceLoadCount(server, teamId), List.copyOf(suspended), List.copyOf(suspendedWarNames), List.copyOf(restored), List.copyOf(restoredWarNames), List.copyOf(unaffordable), List.copyOf(unaffordableWarNames), unaffordableForceLoadCount);
             }
 
-            if (!cost.isEmpty() && !account.getMoneyStorage().containsValue(cost)) {
+            if (!account.canAfford(costCopper)) {
                 savedData.setPendingState(teamId, pendingState);
                 savedData.setProtectionLocked(teamId, true);
-                ProtectionService.notifyTeam(server, team, "message.lc_ftb_hook.upkeep_unpaid_frozen");
-                syncState(server, team);
-                return new SettlementResult(false, MoneyValue.empty(), pendingState, forceLoadCount(team), List.copyOf(suspended), List.copyOf(suspendedWarNames), List.copyOf(restored), List.copyOf(restoredWarNames), List.copyOf(unaffordable), List.copyOf(unaffordableWarNames));
+                // Officers/owner only - a plain member can't do anything
+                // about the team's balance or protections anyway.
+                ProtectionService.notifyTeamManagers(server, teamId, Component.translatable("message.lc_ftb_hook.upkeep_unpaid_frozen"));
+                syncState(server, teamId);
+                return new SettlementResult(false, 0L, pendingState, forceLoadCount(server, teamId), List.copyOf(suspended), List.copyOf(suspendedWarNames), List.copyOf(restored), List.copyOf(restoredWarNames), List.copyOf(unaffordable), List.copyOf(unaffordableWarNames), unaffordableForceLoadCount);
             }
 
-            if (!cost.isEmpty()) {
-                MoneyValue withdrawn = account.withdrawMoney(cost);
-                dev.malik.lcftbhook.bank.BankTransactionLog.logWithdraw(account, "Upkeep Payment", withdrawn);
-                dev.malik.lcftbhook.bank.ServerAccountDeposit.deposit(withdrawn, WarService.displayName(team) + " (upkeep)");
-            }
+            account.withdraw(costCopper, "Upkeep Payment");
+            dev.malik.lcftbhook.bank.ServerAccountDeposit.deposit(server, costCopper, WarService.displayName(server, teamId) + " (upkeep)");
             savedData.setPendingState(teamId, pendingState);
             savedData.setProtectionLocked(teamId, false);
-            syncState(server, team);
-            return new SettlementResult(true, cost, pendingState, forceLoadCount(team), List.copyOf(suspended), List.copyOf(suspendedWarNames), List.copyOf(restored), List.copyOf(restoredWarNames), List.copyOf(unaffordable), List.copyOf(unaffordableWarNames));
+            syncState(server, teamId);
+            return new SettlementResult(true, costCopper, pendingState, forceLoadCount(server, teamId), List.copyOf(suspended), List.copyOf(suspendedWarNames), List.copyOf(restored), List.copyOf(restoredWarNames), List.copyOf(unaffordable), List.copyOf(unaffordableWarNames), unaffordableForceLoadCount);
         } finally {
             ProtectionService.setApplying(false);
         }
@@ -135,11 +151,10 @@ public final class UpkeepSettlementService {
 
     private static TeamPendingState applyUserWarEnds(
             MinecraftServer server,
-            Team team,
+            UUID teamId,
             FtbHookSavedData savedData,
             TeamPendingState pendingState
     ) {
-        UUID teamId = team.getTeamId();
         Set<UUID> partners = new HashSet<>();
         TeamPendingState updated = pendingState;
         for (UUID targetId : new HashSet<>(pendingState.pendingWarEnds())) {
@@ -148,69 +163,63 @@ public final class UpkeepSettlementService {
             }
             updated = updated.withoutPendingWarEnd(targetId);
         }
-        refreshWarPartners(server, team, teamId, partners);
+        refreshWarPartners(server, teamId, partners);
         return updated;
     }
 
     private static TeamPendingState restorePendingProtections(
             MinecraftServer server,
-            Team team,
+            UUID teamId,
             TeamPendingState pendingState,
-            IBankAccount account,
+            CurrencyAccount account,
             List<DismantleStep> restoredOut,
             List<DismantleStep> unaffordableOut
     ) {
         FtbHookSavedData savedData = FtbHookSavedData.get(server);
-        UUID teamId = team.getTeamId();
         TeamPendingState updated = pendingState;
 
         for (DismantleStep step : ProtectionDismantleOrder.restoreOrder(server, teamId)) {
             if (!ProtectionRollbackService.hasPendingApply(savedData, teamId, step.regionId(), step.property(), updated)) {
                 continue;
             }
-            if (!WarService.canAffordUpkeepWithPendingProperty(server, team, updated, account, step.regionId(), step.property())) {
+            if (!WarCostService.canAffordUpkeepWithPendingProperty(server, teamId, updated, account, step.regionId(), step.property())) {
                 unaffordableOut.add(step);
                 continue;
             }
-            updated = ProtectionRollbackService.restoreProtection(server, team, step.regionId(), step.property(), updated);
+            updated = ProtectionRollbackService.restoreProtection(server, teamId, step.regionId(), step.property(), updated);
             restoredOut.add(step);
         }
 
-        if (WarService.canAffordUpkeep(server, team, updated, account)) {
-            PendingChangeService.applyPendingForceLoadsOnly(server, team, updated);
-            updated = clearForceLoadPending(updated);
-        }
+        updated = PendingChangeService.applyAffordablePendingForceLoads(server, teamId, updated, account);
 
         return updated;
     }
 
     private static TeamPendingState restorePendingWars(
             MinecraftServer server,
-            Team team,
+            UUID teamId,
             FtbHookSavedData savedData,
             TeamPendingState pendingState,
-            IBankAccount account,
+            CurrencyAccount account,
             List<String> restoredWarNamesOut,
             List<String> unaffordableWarNamesOut
     ) {
-        UUID teamId = team.getTeamId();
-        List<UUID> restoreOrder = WarService.pendingWarRestoreOrder(server, team, pendingState, savedData);
+        List<UUID> restoreOrder = WarDismantleOrder.pendingWarRestoreOrder(server, teamId, pendingState, savedData);
         TeamPendingState updated = pendingState;
         Set<UUID> partners = new HashSet<>();
 
         for (UUID targetId : restoreOrder) {
-            if (!WarService.canAffordUpkeepWithOutgoingWar(server, team, updated, account, savedData, targetId)) {
+            if (!WarCostService.canAffordUpkeepWithOutgoingWar(server, teamId, updated, account, savedData, targetId)) {
                 break;
             }
             savedData.setWarTarget(teamId, targetId, true);
             updated = updated.withoutPendingWarDeclare(targetId);
             partners.add(targetId);
-            Team target = FtbTeamCatalog.resolve(server, targetId);
-            restoredWarNamesOut.add(target != null ? WarService.displayName(target) : targetId.toString());
+            restoredWarNamesOut.add(WarService.displayName(server, targetId));
         }
 
         if (!partners.isEmpty()) {
-            refreshWarPartners(server, team, teamId, partners);
+            refreshWarPartners(server, teamId, partners);
         }
         // Whatever's still pending-declare after the loop above is exactly
         // what couldn't be afforded this pass - restorePendingProtections has
@@ -218,27 +227,25 @@ public final class UpkeepSettlementService {
         // the team; pending war declares had no equivalent until now, so a
         // war stuck waiting on funds silently never showed up anywhere.
         for (UUID targetId : updated.pendingWarDeclares()) {
-            Team target = FtbTeamCatalog.resolve(server, targetId);
-            unaffordableWarNamesOut.add(target != null ? WarService.displayName(target) : targetId.toString());
+            unaffordableWarNamesOut.add(WarService.displayName(server, targetId));
         }
         return updated;
     }
 
     private static TeamPendingState dismantleOutgoingWarsUntilAffordable(
             MinecraftServer server,
-            Team team,
+            UUID teamId,
             FtbHookSavedData savedData,
             TeamPendingState pendingState,
-            IBankAccount account,
+            CurrencyAccount account,
             List<String> suspendedWarNamesOut
     ) {
-        UUID teamId = team.getTeamId();
         TeamPendingState updated = pendingState;
-        List<UUID> dismantleOrder = WarService.outgoingWarDismantleOrder(server, team, savedData);
+        List<UUID> dismantleOrder = WarDismantleOrder.outgoingWarDismantleOrder(server, teamId, savedData);
         Set<UUID> partners = new HashSet<>();
 
         for (UUID targetId : dismantleOrder) {
-            if (WarService.canAffordUpkeep(server, team, updated, account)) {
+            if (WarCostService.canAffordUpkeep(server, teamId, updated, account)) {
                 break;
             }
             if (updated.isPendingWarEnd(targetId) || !savedData.isAtWarWith(teamId, targetId)) {
@@ -247,98 +254,95 @@ public final class UpkeepSettlementService {
             savedData.setWarTarget(teamId, targetId, false);
             updated = updated.withPendingWarDeclare(targetId);
             partners.add(targetId);
-            Team target = FtbTeamCatalog.resolve(server, targetId);
-            suspendedWarNamesOut.add(target != null ? WarService.displayName(target) : targetId.toString());
+            suspendedWarNamesOut.add(WarService.displayName(server, targetId));
         }
 
         if (!partners.isEmpty()) {
-            refreshWarPartners(server, team, teamId, partners);
+            refreshWarPartners(server, teamId, partners);
         }
         return updated;
     }
 
     /**
-     * Drops force-loaded chunks one at a time (stopping as soon as
-     * affordable), same shape as {@link #dismantleOutgoingWarsUntilAffordable}
-     * and {@link #dismantleProtectionsUntilAffordable} - not a hard drop,
-     * see {@link PendingChangeService#convertOneForceLoadToPending}.
+     * Drops force-loaded chunks one REGION at a time (stopping as soon as
+     * affordable) - a region's force-loaded chunks are dropped all together
+     * as one unit, not one chunk at a time, same all-or-nothing granularity
+     * as one war being dropped in {@link #dismantleOutgoingWarsUntilAffordable}
+     * (contrast {@link #dismantleProtectionsUntilAffordable}, which is
+     * per-property). Not a hard drop, see
+     * {@link PendingChangeService#convertOneForceLoadToPending}.
      */
     private static TeamPendingState dismantleForceLoadsUntilAffordable(
             MinecraftServer server,
-            Team team,
+            UUID teamId,
             TeamPendingState pendingState,
-            IBankAccount account
+            CurrencyAccount account
     ) {
         TeamPendingState updated = pendingState;
-        for (String chunkKey : PendingChangeService.forceLoadDismantleOrder(team)) {
-            if (WarService.canAffordUpkeep(server, team, updated, account)) {
+        for (PendingChangeService.RegionForceLoadGroup group : PendingChangeService.forceLoadDismantleOrder(server, teamId)) {
+            if (WarCostService.canAffordUpkeep(server, teamId, updated, account)) {
                 break;
             }
-            updated = PendingChangeService.convertOneForceLoadToPending(server, team, chunkKey, updated);
+            for (String chunkKey : group.chunkKeys()) {
+                updated = PendingChangeService.convertOneForceLoadToPending(server, teamId, chunkKey, updated);
+            }
         }
         return updated;
     }
 
     private static TeamPendingState dismantleProtectionsUntilAffordable(
             MinecraftServer server,
-            Team team,
+            UUID teamId,
             TeamPendingState pendingState,
-            IBankAccount account,
+            CurrencyAccount account,
             List<DismantleStep> suspendedOut
     ) {
         FtbHookSavedData savedData = FtbHookSavedData.get(server);
-        UUID teamId = team.getTeamId();
         TeamPendingState updated = pendingState;
 
         for (DismantleStep step : ProtectionDismantleOrder.fullDismantleOrder(server, teamId)) {
             if (!ProtectionRollbackService.isLiveProtectionBillable(savedData, teamId, step.regionId(), step.property())) {
                 continue;
             }
-            long reducedCost = WarService.calculateProtectionAndIncomingUpkeepCopper(server, team, updated);
-            if (reducedCost <= 0L || account.getMoneyStorage().containsValue(MoneyUtil.fromCopper(reducedCost))) {
+            long reducedCost = WarCostService.calculateProtectionAndIncomingUpkeepCopper(server, teamId, updated);
+            if (account.canAfford(reducedCost)) {
                 break;
             }
-            updated = ProtectionRollbackService.suspendProtection(server, team, step.regionId(), step.property(), updated);
+            updated = ProtectionRollbackService.suspendProtection(server, teamId, step.regionId(), step.property(), updated);
             suspendedOut.add(step);
         }
 
         return updated;
     }
 
-    private static TeamPendingState clearForceLoadPending(TeamPendingState pendingState) {
-        TeamPendingState updated = pendingState;
-        for (String key : pendingState.pendingForceLoads()) {
-            updated = updated.withoutPendingForceLoad(key);
-        }
-        for (String key : pendingState.pendingForceUnloads()) {
-            updated = updated.withoutPendingForceUnload(key);
-        }
-        return updated;
+    private static int forceLoadCount(MinecraftServer server, UUID teamId) {
+        return Backends.claim().forceLoadedChunks(server, teamId).size();
     }
 
-    private static int forceLoadCount(Team team) {
-        ChunkTeamData chunkData = FTBChunksAPI.api().getManager().getOrCreateData(team);
-        return chunkData.getForceLoadedChunks().size();
-    }
-
-    private static void refreshWarPartners(MinecraftServer server, Team team, UUID teamId, Set<UUID> partners) {
+    private static void refreshWarPartners(MinecraftServer server, UUID teamId, Set<UUID> partners) {
         if (partners.isEmpty()) {
             return;
         }
         WarStateSync.syncToTeam(server, teamId);
-        WarStateSync.onUpkeepFactorsChanged(server, team);
+        WarStateSync.onUpkeepFactorsChanged(server, teamId);
         for (UUID partnerId : partners) {
             WarStateSync.syncToTeam(server, partnerId);
-            Team partner = FtbTeamCatalog.resolve(server, partnerId);
-            if (partner != null) {
-                WarStateSync.onUpkeepFactorsChanged(server, partner);
+            if (TeamCatalog.exists(server, partnerId)) {
+                WarStateSync.onUpkeepFactorsChanged(server, partnerId);
             }
         }
     }
 
-    private static void syncState(MinecraftServer server, Team team) {
-        PendingStateSync.syncTeam(server, team);
-        RegionService.syncRegionsToTeam(server, team);
-        WarStateSync.onUpkeepFactorsChanged(server, team);
+    private static void syncState(MinecraftServer server, UUID teamId) {
+        PendingStateSync.syncTeam(server, teamId);
+        RegionService.syncRegionsToTeam(server, teamId);
+        WarStateSync.onUpkeepFactorsChanged(server, teamId);
+        // Upkeep just withdrew (or tried to withdraw) money from the team's
+        // account - without this, the balance shown in the claim/map info
+        // panel stayed stale until something unrelated happened to trigger a
+        // resync (opening the claim screen, claiming a chunk, etc.).
+        for (net.minecraft.server.level.ServerPlayer member : Backends.claim().onlineMembers(server, teamId)) {
+            ClaimPriceSync.syncToPlayer(member);
+        }
     }
 }

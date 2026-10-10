@@ -2,10 +2,7 @@ package dev.malik.lcftbhook.command;
 
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.context.CommandContext;
-import dev.ftb.mods.ftbteams.api.FTBTeamsAPI;
-import dev.ftb.mods.ftbteams.api.Team;
 import dev.malik.lcftbhook.LCFtbHook;
-import dev.malik.lcftbhook.bank.BankAccountHelper;
 import dev.malik.lcftbhook.service.UpkeepBreakdown;
 import dev.malik.lcftbhook.service.UpkeepBreakdownStore;
 import dev.malik.lcftbhook.service.UpkeepMessageBuilder;
@@ -29,16 +26,17 @@ public final class UpkeepDetailsCommand {
     private static int showDetails(CommandContext<CommandSourceStack> context) {
         CommandSourceStack source = context.getSource();
         ServerPlayer player = source.getPlayer();
-        if (player == null || !FTBTeamsAPI.api().isManagerLoaded()) {
+        if (player == null) {
             return 0;
         }
 
-        Team team = FTBTeamsAPI.api().getManager().getTeamForPlayer(player).orElse(null);
-        if (team == null) {
+        java.util.UUID teamId = dev.malik.lcftbhook.service.TeamCatalog.teamOf(player.server, player.getUUID());
+        if (teamId == null) {
             return 0;
         }
 
-        if (team.isPartyTeam() && !BankAccountHelper.canPurchaseForTeam(player.server, team, player.getUUID())) {
+        if (dev.malik.lcftbhook.service.TeamCatalog.isParty(player.server, teamId)
+                && !dev.malik.lcftbhook.port.Backends.currency().canPlayerSpend(player.server, teamId, player.getUUID())) {
             player.displayClientMessage(
                     Component.translatable("message.lc_ftb_hook.upkeep_detail.denied"),
                     false
@@ -46,7 +44,7 @@ public final class UpkeepDetailsCommand {
             return 0;
         }
 
-        UpkeepBreakdown breakdown = UpkeepBreakdownStore.get(team.getTeamId());
+        UpkeepBreakdown breakdown = UpkeepBreakdownStore.get(teamId);
         if (breakdown == null) {
             player.displayClientMessage(
                     Component.translatable("message.lc_ftb_hook.upkeep_detail.unavailable"),

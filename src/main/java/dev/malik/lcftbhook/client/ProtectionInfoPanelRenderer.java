@@ -29,6 +29,24 @@ public final class ProtectionInfoPanelRenderer {
         return PADDING * 2 + contentHeight;
     }
 
+    /**
+     * Width that fits every line of all given panels (at least {@code minWidth},
+     * at most {@code maxWidth}) - stacked panels share it so their edges line
+     * up, and it grows for long lines such as multi-coin amounts or OPAC's
+     * longer protection names instead of letting them spill over the edge.
+     */
+    public static int width(int minWidth, int maxWidth, ProtectionInfoLines.Content... contents) {
+        Font font = Minecraft.getInstance().font;
+        int widest = minWidth;
+        for (ProtectionInfoLines.Content content : contents) {
+            int headOffset = content.skinOwner() != null ? HEAD_SIZE + 6 : 0;
+            for (Component line : content.lines()) {
+                widest = Math.max(widest, PADDING * 2 + headOffset + font.width(line));
+            }
+        }
+        return Math.min(widest, Math.max(minWidth, maxWidth));
+    }
+
     public static void draw(GuiGraphics graphics, ProtectionInfoLines.Content content, int panelX, int panelY, int panelWidth) {
         if (content.lines().isEmpty()) {
             return;

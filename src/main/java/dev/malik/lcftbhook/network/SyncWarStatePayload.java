@@ -2,9 +2,7 @@ package dev.malik.lcftbhook.network;
 
 import dev.malik.lcftbhook.LCFtbHook;
 import dev.malik.lcftbhook.client.ClientWarState;
-import dev.malik.lcftbhook.client.gui.WarScreen;
-import dev.malik.lcftbhook.client.PendingStateUiRefresh;
-import dev.ftb.mods.ftblibrary.util.client.ClientUtils;
+import dev.malik.lcftbhook.client.ClientUiRefresh;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
@@ -86,11 +84,7 @@ public record SyncWarStatePayload(
     public static void handleClient(SyncWarStatePayload payload, IPayloadContext context) {
         context.enqueueWork(() -> {
             ClientWarState.update(payload);
-            if (ClientUtils.getCurrentGuiAs(WarScreen.class) != null) {
-                WarScreen.refreshIfOpen();
-            } else {
-                PendingStateUiRefresh.refreshOpenScreens();
-            }
+            ClientUiRefresh.refreshWarState();
         });
     }
 }

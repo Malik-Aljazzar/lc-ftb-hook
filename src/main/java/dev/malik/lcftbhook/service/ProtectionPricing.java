@@ -1,17 +1,13 @@
 package dev.malik.lcftbhook.service;
 
-import dev.ftb.mods.ftbchunks.api.ChunkTeamData;
-import dev.ftb.mods.ftbchunks.api.ClaimedChunk;
-import dev.ftb.mods.ftbchunks.api.FTBChunksAPI;
-import dev.ftb.mods.ftbteams.api.Team;
 import dev.malik.lcftbhook.data.ChunkPosKey;
 import dev.malik.lcftbhook.data.FtbHookSavedData;
 import dev.malik.lcftbhook.data.ProtectionProperty;
 import dev.malik.lcftbhook.data.Region;
 import dev.malik.lcftbhook.data.RegionPropertyKey;
 import dev.malik.lcftbhook.data.TeamPendingState;
-import dev.malik.lcftbhook.util.MoneyUtil;
-import io.github.lightman314.lightmanscurrency.api.money.value.MoneyValue;
+import dev.malik.lcftbhook.port.Backends;
+import dev.malik.lcftbhook.port.claim.ClaimPort;
 import net.minecraft.server.MinecraftServer;
 
 import java.util.ArrayList;
@@ -38,32 +34,18 @@ public final class ProtectionPricing {
         public static final ChunkCounts EMPTY = new ChunkCounts(0, Map.of());
     }
 
-    public static ChunkCounts countBillableChunks(MinecraftServer server, Team team) {
-        return countBillableChunks(server, team, new TeamPendingState());
+    public static ChunkCounts countBillableChunks(MinecraftServer server, UUID teamId) {
+        return countBillableChunks(server, teamId, new TeamPendingState());
     }
 
-    public static ChunkCounts countBillableChunks(MinecraftServer server, Team team, TeamPendingState pendingState) {
-        if (!FTBChunksAPI.api().isManagerLoaded()) {
-            return ChunkCounts.EMPTY;
-        }
-        ChunkTeamData chunkData = FTBChunksAPI.api().getManager().getOrCreateData(team);
-        return countBillableChunks(server, team, chunkData, pendingState);
-    }
-
-    public static ChunkCounts countBillableChunks(
-            MinecraftServer server,
-            Team team,
-            ChunkTeamData chunkData,
-            TeamPendingState pendingState
-    ) {
+    public static ChunkCounts countBillableChunks(MinecraftServer server, UUID teamId, TeamPendingState pendingState) {
         FtbHookSavedData savedData = FtbHookSavedData.get(server);
-        UUID teamId = team.getTeamId();
 
         Map<UUID, Integer> raw = new LinkedHashMap<>();
         int total = 0;
-        for (ClaimedChunk chunk : chunkData.getClaimedChunks()) {
+        for (ClaimPort.ChunkKey chunk : Backends.claim().claimedChunks(server, teamId)) {
             total++;
-            String key = ChunkPosKey.encode(chunk.getPos());
+            String key = ChunkPosKey.encode(chunk);
             UUID regionId = effectiveRegion(savedData, teamId, key, pendingState);
             raw.merge(regionId, 1, Integer::sum);
         }
@@ -84,7 +66,8 @@ public final class ProtectionPricing {
         return new ChunkCounts(total, perRegion);
     }
 
-    private static UUID effectiveRegion(
+    /** The region a chunk is billed/attributed to right now - its pending reassignment target if one is queued, otherwise its live assignment. */
+    public static UUID effectiveRegion(
             FtbHookSavedData savedData,
             UUID teamId,
             String chunkKey,
@@ -143,32 +126,30 @@ public final class ProtectionPricing {
     }
 
     public static long calculateForceLoadCopper(int forceLoadCount) {
-        long forceLoadPrice = dev.malik.lcftbhook.config.LCFtbHookConfig.SERVER.forceLoadUpkeepPrice.get();
-        if (forceLoadPrice > 0 && forceLoadCount > 0) {
-            return forceLoadPrice * forceLoadCount;
+        long forceLoadPriceTenths = dev.malik.lcftbhook.config.LCFtbHookConfig.SERVER.forceLoadUpkeepPrice.get();
+        if (forceLoadPriceTenths > 0 && forceLoadCount > 0) {
+            // Tenths of a copper (see LCFtbHookConfig's [general] note) - same
+            // "multiply first, floor-divide once at the end" shape as
+            // calculateProtectionCopper above, not per-chunk floor then sum.
+            return Math.floorDiv(forceLoadPriceTenths * forceLoadCount, 10L);
         }
         return 0L;
     }
 
-    public static MoneyValue calculateTotalUpkeepCost(MinecraftServer server, Team team, TeamPendingState pendingState) {
-        return MoneyUtil.fromCopper(calculateTotalUpkeepCopper(server, team, pendingState));
-    }
-
-    public static long calculateTotalUpkeepCopper(MinecraftServer server, Team team, TeamPendingState pendingState) {
-        ChunkTeamData chunkData = FTBChunksAPI.api().getManager().getOrCreateData(team);
-        ChunkCounts counts = countBillableChunks(server, team, chunkData, pendingState);
-        int forceLoadCount = countEffectiveForceLoads(chunkData, pendingState);
-        long protectionCopper = UpkeepGating.shouldChargeProtection(server, team)
+    public static long calculateTotalUpkeepCopper(MinecraftServer server, UUID teamId, TeamPendingState pendingState) {
+        ChunkCounts counts = countBillableChunks(server, teamId, pendingState);
+        int forceLoadCount = countEffectiveForceLoads(server, teamId, pendingState);
+        long protectionCopper = UpkeepGating.shouldChargeProtection(server, teamId)
                 ? calculateProtectionCopper(
                         server,
-                        team.getTeamId(),
-                        new TeamPendingState(ProtectionRollbackService.pricingProperties(server, team, pendingState),
+                        teamId,
+                        new TeamPendingState(ProtectionRollbackService.pricingProperties(server, teamId, pendingState),
                                 pendingState.pendingForceLoads(), pendingState.pendingForceUnloads(),
                                 pendingState.pendingRegionAssignments(), pendingState.pendingWarDeclares(), pendingState.pendingWarEnds()),
                         counts
                 )
                 : 0L;
-        long forceLoadCopper = UpkeepGating.shouldChargeForceLoad(server, team)
+        long forceLoadCopper = UpkeepGating.shouldChargeForceLoad(server, teamId)
                 ? calculateForceLoadCopper(forceLoadCount)
                 : 0L;
         return protectionCopper + forceLoadCopper;
@@ -176,27 +157,26 @@ public final class ProtectionPricing {
 
     public static long calculateTotalUpkeepCopper(
             MinecraftServer server,
-            Team team,
+            UUID teamId,
             TeamPendingState pendingState,
             Map<String, String> pricingOverrides
     ) {
-        ChunkTeamData chunkData = FTBChunksAPI.api().getManager().getOrCreateData(team);
-        ChunkCounts counts = countBillableChunks(server, team, chunkData, pendingState);
-        int forceLoadCount = countEffectiveForceLoads(chunkData, pendingState);
+        ChunkCounts counts = countBillableChunks(server, teamId, pendingState);
+        int forceLoadCount = countEffectiveForceLoads(server, teamId, pendingState);
         TeamPendingState overlay = new TeamPendingState(pricingOverrides,
                 pendingState.pendingForceLoads(), pendingState.pendingForceUnloads(),
                 pendingState.pendingRegionAssignments(), pendingState.pendingWarDeclares(), pendingState.pendingWarEnds());
-        long protectionCopper = UpkeepGating.shouldChargeProtection(server, team)
-                ? calculateProtectionCopper(server, team.getTeamId(), overlay, counts)
+        long protectionCopper = UpkeepGating.shouldChargeProtection(server, teamId)
+                ? calculateProtectionCopper(server, teamId, overlay, counts)
                 : 0L;
-        long forceLoadCopper = UpkeepGating.shouldChargeForceLoad(server, team)
+        long forceLoadCopper = UpkeepGating.shouldChargeForceLoad(server, teamId)
                 ? calculateForceLoadCopper(forceLoadCount)
                 : 0L;
         return protectionCopper + forceLoadCopper;
     }
 
-    public static int countEffectiveForceLoads(ChunkTeamData chunkData, TeamPendingState pendingState) {
-        int count = chunkData.getForceLoadedChunks().size();
+    public static int countEffectiveForceLoads(MinecraftServer server, UUID teamId, TeamPendingState pendingState) {
+        int count = Backends.claim().forceLoadedChunks(server, teamId).size();
         count += pendingState.pendingForceLoads().size();
         count -= pendingState.pendingForceUnloads().size();
         return Math.max(count, 0);

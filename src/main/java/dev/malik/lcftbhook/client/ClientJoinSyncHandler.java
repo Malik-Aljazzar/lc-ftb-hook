@@ -17,11 +17,18 @@ import net.neoforged.neoforge.network.PacketDistributor;
 public final class ClientJoinSyncHandler {
     public ClientJoinSyncHandler() {
         NeoForge.EVENT_BUS.addListener(this::onLoggingIn);
+        NeoForge.EVENT_BUS.addListener(this::onLoggingOut);
     }
 
     private void onLoggingIn(ClientPlayerNetworkEvent.LoggingIn event) {
         PacketDistributor.sendToServer(new RequestClaimPricesPayload());
         PacketDistributor.sendToServer(new RequestRegionsPayload());
         PacketDistributor.sendToServer(new RequestChunkOwnershipPayload());
+    }
+
+    /** The next server may use different claim/currency backends. */
+    private void onLoggingOut(ClientPlayerNetworkEvent.LoggingOut event) {
+        dev.malik.lcftbhook.port.Backends.reset();
+        ClientClaims.reset();
     }
 }

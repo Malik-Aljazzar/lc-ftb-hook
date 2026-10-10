@@ -1,7 +1,6 @@
 package dev.malik.lcftbhook.data;
 
 import dev.malik.lcftbhook.LCFtbHook;
-import io.github.lightman314.lightmanscurrency.common.bank.BankAccount;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
@@ -24,14 +23,38 @@ import java.util.Set;
 import java.util.UUID;
 
 public class FtbHookSavedData extends SavedData {
-    private static final String DATA_NAME = LCFtbHook.MOD_ID + "_team_accounts";
+    static final String DATA_NAME = LCFtbHook.MOD_ID + "_team_accounts";
     /** Name given to the region auto-created from a pre-Regions world's "land chunks" on first load after upgrade. */
     private static final String MIGRATED_LAND_REGION_NAME = "Land";
 
     private final Map<UUID, TeamLinkEntry> teamLinks = new HashMap<>();
+    /** Entries that failed to load - written back unchanged, never dropped (see {@link #load}). */
+    private final List<CompoundTag> quarantined = new ArrayList<>();
+
+    /** False while the server is still starting up (worlds not created yet) - {@link #get} would fail then. */
+    public static boolean isAvailable(MinecraftServer server) {
+        return server != null && server.overworld() != null;
+    }
+
+    /** Stored instead of an LC team id while a party has none. */
+    public static final long NO_LC_TEAM = -1L;
+
+    /**
+     * Lightman's Currency numbers its teams from 0 - so 0 is a real team, and
+     * only a negative id means "no team". (Up to 4.2.0 this mod treated 0 as
+     * "none": a new world's first party could never keep its LC team, got
+     * "Missing LC team bank account" and couldn't claim past the free chunks.)
+     */
+    public static boolean isLcTeamId(long lcTeamId) {
+        return lcTeamId >= 0;
+    }
 
     public static FtbHookSavedData get(MinecraftServer server) {
         ServerLevel level = server.overworld();
+        if (level == null) {
+            // e.g. another mod's load-time event reaching our code before the worlds exist (4.0.0 incident)
+            throw new IllegalStateException("LC FTB Hook world data accessed before the worlds are loaded");
+        }
         DimensionDataStorage storage = level.getDataStorage();
         return storage.computeIfAbsent(new SavedData.Factory<>(FtbHookSavedData::new, FtbHookSavedData::load), DATA_NAME);
     }
@@ -41,12 +64,26 @@ public class FtbHookSavedData extends SavedData {
         ListTag list = tag.getList("Teams", Tag.TAG_COMPOUND);
         for (int i = 0; i < list.size(); i++) {
             CompoundTag entryTag = list.getCompound(i);
-            UUID teamId = entryTag.getUUID("TeamId");
-            long lcTeamId = entryTag.contains("LcTeamId", Tag.TAG_LONG) ? entryTag.getLong("LcTeamId") : -1L;
-            BankAccount legacyAccount = null;
-            if (entryTag.contains("Account", Tag.TAG_COMPOUND)) {
-                legacyAccount = new BankAccount(() -> data.setDirty(), entryTag.getCompound("Account"), lookup);
+            try {
+                loadEntry(data, entryTag);
+            } catch (RuntimeException e) {
+                // One broken entry must not cost every team its data: keep it as-is.
+                data.quarantined.add(entryTag.copy());
+                LCFtbHook.LOGGER.error("Could not read hook data entry #{} - kept unchanged in the save file", i, e);
             }
+        }
+        data.reportSharedLcLinks();
+        return data;
+    }
+
+    private static void loadEntry(FtbHookSavedData data, CompoundTag entryTag) {
+        {
+            UUID teamId = entryTag.getUUID("TeamId");
+            long lcTeamId = entryTag.contains("LcTeamId", Tag.TAG_LONG) ? entryTag.getLong("LcTeamId") : NO_LC_TEAM;
+            // Raw NBT on purpose - only the Lightman's Currency adapter knows how to
+            // interpret it (LcTeamSync.migrateLegacyBalance), so this class never
+            // depends on a currency mod.
+            CompoundTag legacyAccount = entryTag.contains("Account", Tag.TAG_COMPOUND) ? entryTag.getCompound("Account").copy() : null;
             boolean locked = entryTag.getBoolean("ProtectionLocked");
             TeamPendingState pending = loadPendingState(entryTag);
 
@@ -104,12 +141,41 @@ public class FtbHookSavedData extends SavedData {
                     freshlyClaimedChunks.add(freshlyClaimedList.getString(j));
                 }
             }
+            TeamLinkInvariants.Checked checked = TeamLinkInvariants.check(regionOrder, regions, chunkRegions, pending);
+            if (!checked.repairs().isEmpty()) {
+                LCFtbHook.LOGGER.warn("Repaired hook data of team {}: {}", teamId, checked.repairs());
+                data.setDirty();
+            }
             data.teamLinks.put(teamId, new TeamLinkEntry(
-                    teamId, lcTeamId, legacyAccount, locked, pending, regionOrder, regions, chunkRegions,
-                    chunkOwnership, warTargets, unsettledChunks, freshlyClaimedChunks
+                    teamId, lcTeamId, legacyAccount, locked, checked.pending(), checked.regionOrder(), checked.regions(),
+                    checked.chunkRegions(), chunkOwnership, warTargets, unsettledChunks, freshlyClaimedChunks
             ));
         }
-        return data;
+    }
+
+    /**
+     * One LC team belongs to at most one party. At load time it can't be told
+     * which party is the real one (4.1.0 cleared whichever came second - possibly
+     * the active party's link), so a shared link is only reported here and
+     * resolved at runtime by {@code LcTeamSync} with the claim mod's knowledge.
+     */
+    private void reportSharedLcLinks() {
+        Map<Long, List<UUID>> parties = new HashMap<>();
+        for (TeamLinkEntry entry : teamLinks.values()) {
+            if (isLcTeamId(entry.lcTeamId())) {
+                parties.computeIfAbsent(entry.lcTeamId(), id -> new ArrayList<>()).add(entry.ftbTeamId());
+            }
+        }
+        parties.forEach((lcTeamId, linked) -> {
+            if (linked.size() > 1) {
+                LCFtbHook.LOGGER.warn("LC team {} is linked to {} parties {} - resolved once the parties are known", lcTeamId, linked.size(), linked);
+            }
+        });
+    }
+
+    /** The parties whose link points at this LC team. */
+    public List<UUID> partiesLinkedTo(long lcTeamId) {
+        return teamLinks.values().stream().filter(entry -> entry.lcTeamId() == lcTeamId).map(TeamLinkEntry::ftbTeamId).toList();
     }
 
     private static Set<String> loadLegacyLandChunks(CompoundTag entryTag) {
@@ -284,11 +350,11 @@ public class FtbHookSavedData extends SavedData {
         for (TeamLinkEntry entry : teamLinks.values()) {
             CompoundTag entryTag = new CompoundTag();
             entryTag.putUUID("TeamId", entry.ftbTeamId());
-            if (entry.lcTeamId() > 0) {
+            if (isLcTeamId(entry.lcTeamId())) {
                 entryTag.putLong("LcTeamId", entry.lcTeamId());
             }
             if (entry.legacyAccount() != null) {
-                entryTag.put("Account", entry.legacyAccount().save(lookup));
+                entryTag.put("Account", entry.legacyAccount().copy());
             }
             entryTag.putBoolean("ProtectionLocked", entry.protectionLocked());
             savePendingState(entryTag, entry.pendingState());
@@ -372,6 +438,7 @@ public class FtbHookSavedData extends SavedData {
             }
             list.add(entryTag);
         }
+        quarantined.forEach(raw -> list.add(raw.copy()));
         tag.put("Teams", list);
         return tag;
     }
@@ -419,7 +486,7 @@ public class FtbHookSavedData extends SavedData {
     private static TeamLinkEntry freshEntry(UUID ftbTeamId) {
         Region defaultRegion = Region.createDefault();
         return new TeamLinkEntry(
-                ftbTeamId, -1L, null, false, new TeamPendingState(),
+                ftbTeamId, NO_LC_TEAM, null, false, new TeamPendingState(),
                 new ArrayList<>(List.of(defaultRegion.id())),
                 new LinkedHashMap<>(Map.of(defaultRegion.id(), defaultRegion)),
                 new HashMap<>(),
@@ -437,7 +504,7 @@ public class FtbHookSavedData extends SavedData {
 
     @Nullable
     public TeamLinkEntry findByLcTeamId(long lcTeamId) {
-        if (lcTeamId <= 0) {
+        if (!isLcTeamId(lcTeamId)) {
             return null;
         }
         for (TeamLinkEntry entry : teamLinks.values()) {
@@ -464,10 +531,10 @@ public class FtbHookSavedData extends SavedData {
     /** Clears the LC bank link only; keeps regions, pending state, and protection lock. */
     public boolean clearLcTeamLink(UUID ftbTeamId) {
         TeamLinkEntry entry = teamLinks.get(ftbTeamId);
-        if (entry == null || (entry.lcTeamId() <= 0 && entry.legacyAccount() == null)) {
+        if (entry == null || (!isLcTeamId(entry.lcTeamId()) && entry.legacyAccount() == null)) {
             return false;
         }
-        teamLinks.put(ftbTeamId, entry.withLcTeamId(-1L).withLegacyAccount(null));
+        teamLinks.put(ftbTeamId, entry.withLcTeamId(NO_LC_TEAM).withLegacyAccount(null));
         setDirty();
         return true;
     }
@@ -495,6 +562,15 @@ public class FtbHookSavedData extends SavedData {
         TeamLinkEntry entry = teamLinks.get(ftbTeamId);
         if (entry != null && entry.legacyAccount() != null) {
             teamLinks.put(ftbTeamId, entry.withLegacyAccount(null));
+            setDirty();
+        }
+    }
+
+    /** Writes back a (currency-backend-serialized) legacy account after it was modified. */
+    public void updateLegacyAccount(UUID ftbTeamId, CompoundTag account) {
+        TeamLinkEntry entry = teamLinks.get(ftbTeamId);
+        if (entry != null && entry.legacyAccount() != null) {
+            teamLinks.put(ftbTeamId, entry.withLegacyAccount(account.copy()));
             setDirty();
         }
     }
@@ -581,13 +657,11 @@ public class FtbHookSavedData extends SavedData {
         List<UUID> updatedOrder = new ArrayList<>(entry.regionOrder());
         updatedOrder.remove(regionId);
 
+        // Members fall back to Default, which is the absence of an entry - an
+        // explicit Default id would read as a different region than the
+        // team's implicit-Default chunks and draw a border between them.
         Map<String, UUID> updatedChunkRegions = new HashMap<>(entry.chunkRegions());
-        for (Map.Entry<String, UUID> chunkEntry : entry.chunkRegions().entrySet()) {
-            if (chunkEntry.getValue().equals(regionId)) {
-                updatedChunkRegions.put(chunkEntry.getKey(), defaultId);
-            }
-        }
-        // Chunks with no explicit entry (already implicitly Default) don't need touching.
+        updatedChunkRegions.values().removeIf(id -> id.equals(regionId) || id.equals(defaultId));
 
         TeamPendingState cleanedPending = entry.pendingState().withoutRegionReferences(regionId);
 
@@ -656,7 +730,14 @@ public class FtbHookSavedData extends SavedData {
     public Map<String, UUID> getAllChunkRegions() {
         Map<String, UUID> all = new HashMap<>();
         for (TeamLinkEntry entry : teamLinks.values()) {
-            all.putAll(entry.chunkRegions());
+            // Skips explicit Default entries older saves may still hold (see removeRegion).
+            UUID defaultId = entry.regions().values().stream()
+                    .filter(Region::isDefault).map(Region::id).findFirst().orElse(null);
+            entry.chunkRegions().forEach((chunkKey, regionId) -> {
+                if (!regionId.equals(defaultId)) {
+                    all.put(chunkKey, regionId);
+                }
+            });
         }
         return all;
     }
@@ -798,7 +879,7 @@ public class FtbHookSavedData extends SavedData {
     public Set<Long> getLinkedLcTeamIds() {
         Set<Long> linkedIds = new HashSet<>();
         for (TeamLinkEntry entry : teamLinks.values()) {
-            if (entry.lcTeamId() > 0) {
+            if (isLcTeamId(entry.lcTeamId())) {
                 linkedIds.add(entry.lcTeamId());
             }
         }
@@ -871,7 +952,7 @@ public class FtbHookSavedData extends SavedData {
     public record TeamLinkEntry(
             UUID ftbTeamId,
             long lcTeamId,
-            @Nullable BankAccount legacyAccount,
+            @Nullable CompoundTag legacyAccount,
             boolean protectionLocked,
             TeamPendingState pendingState,
             List<UUID> regionOrder,
@@ -896,7 +977,7 @@ public class FtbHookSavedData extends SavedData {
             return new TeamLinkEntry(ftbTeamId, id, legacyAccount, protectionLocked, pendingState, regionOrder, regions, chunkRegions, chunkOwnership, warTargets, unsettledChunks, freshlyClaimedChunks);
         }
 
-        TeamLinkEntry withLegacyAccount(@Nullable BankAccount account) {
+        TeamLinkEntry withLegacyAccount(@Nullable CompoundTag account) {
             return new TeamLinkEntry(ftbTeamId, lcTeamId, account, protectionLocked, pendingState, regionOrder, regions, chunkRegions, chunkOwnership, warTargets, unsettledChunks, freshlyClaimedChunks);
         }
 

@@ -1,13 +1,11 @@
 package dev.malik.lcftbhook.service;
 
-import dev.ftb.mods.ftbchunks.api.ChunkTeamData;
-import dev.ftb.mods.ftbchunks.api.ClaimedChunk;
-import dev.ftb.mods.ftbchunks.api.FTBChunksAPI;
-import dev.malik.lcftbhook.config.LCFtbHookConfig;
 import dev.malik.lcftbhook.bank.ClaimBatchContext;
-import net.minecraft.commands.CommandSourceStack;
+import dev.malik.lcftbhook.config.LCFtbHookConfig;
+import dev.malik.lcftbhook.port.Backends;
+import dev.malik.lcftbhook.port.claim.ClaimPort;
+import net.minecraft.server.MinecraftServer;
 
-import java.util.ArrayList;
 import java.util.List;
 
 public final class ClaimSettlementHelper {
@@ -24,20 +22,19 @@ public final class ClaimSettlementHelper {
         return (long) Math.floor(total * refundRatio);
     }
 
-    public static int unclaimAll(ChunkTeamData chunkData, CommandSourceStack source) {
-        return unclaimAll(chunkData, source, true);
+    /** Unclaims every given chunk through the claim backend's normal unclaim path (so refunds and region cleanup run), without per-chunk chat spam. */
+    public static int unclaimAll(MinecraftServer server, List<ClaimPort.ChunkKey> chunks) {
+        return unclaimAll(server, chunks, true);
     }
 
-    public static int unclaimAll(ChunkTeamData chunkData, CommandSourceStack source, boolean suppressNotifications) {
-        List<ClaimedChunk> claimedChunks = new ArrayList<>(chunkData.getClaimedChunks());
-        if (claimedChunks.isEmpty()) {
+    public static int unclaimAll(MinecraftServer server, List<ClaimPort.ChunkKey> chunks, boolean suppressNotifications) {
+        if (chunks.isEmpty()) {
             return 0;
         }
-
         int[] unclaimed = {0};
         Runnable action = () -> {
-            for (ClaimedChunk chunk : claimedChunks) {
-                if (chunkData.unclaim(source, chunk.getPos(), false).isSuccess()) {
+            for (ClaimPort.ChunkKey chunk : List.copyOf(chunks)) {
+                if (Backends.claim().unclaim(server, chunk)) {
                     unclaimed[0]++;
                 }
             }

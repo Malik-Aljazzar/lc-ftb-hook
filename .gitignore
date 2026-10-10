@@ -13,10 +13,12 @@ bin/
 # Decompiled class files (IDE artifact)
 /dev/
 
-# Runtime
+# Runtime (dev servers + clients/<env>-<n>)
 run/
-run-client1/
-run-client2/
+run-opac-server/
+run-ftb-num-server/
+run-opac-lc-server/
+clients/
 run-data/
 logs/
 
@@ -32,3 +34,15 @@ AGENTS.md
 
 # Incremental specification
 specification/
+
+# Manual test plan (local only)
+TESTPLAN.md
+
+# Real server data used by scripts/dev/migration_test.py (contains player names)
+migration-fixtures/
+
+# Logs of issues occuring for users in production (contains player names)
+bug-reports/
+
+# Python bytecode of the dev scripts
+__pycache__/

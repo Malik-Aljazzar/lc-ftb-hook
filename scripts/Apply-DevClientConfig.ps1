@@ -1,8 +1,9 @@
 # Fenster-Vollbild mit Rand: grosses Fenster, kein exklusives Vollbild (F11).
 param(
     [string[]]$RunDirs = @(
-        (Join-Path (Split-Path $PSScriptRoot -Parent) "run"),
-        (Join-Path (Split-Path $PSScriptRoot -Parent) "run-client2")
+        (Join-Path (Split-Path $PSScriptRoot -Parent) "clients/ftb-lc-1"),
+        (Join-Path (Split-Path $PSScriptRoot -Parent) "clients/ftb-lc-2"),
+        (Join-Path (Split-Path $PSScriptRoot -Parent) "clients/ftb-lc-3")
     )
 )
 

@@ -1,7 +1,7 @@
 plugins {
     id 'java-library'
     id 'maven-publish'
-    id 'net.neoforged.moddev' version '2.0.141'
+    id 'net.neoforged.moddev' version '2.0.148'
     id 'idea'
 }
 
@@ -42,6 +42,23 @@ if (devClientWindowFile.exists()) {
     devClientHeight = windowProps.getProperty('height', devClientHeight)
 }
 
+// Dev environments - one per claim backend x currency backend combination.
+// Each has its own server directory and its own clients under clients/<env>-<n>.
+// claim/currency pick the mod sets copied into the mods folders (see the copy
+// tasks further down); FTB, LC, OPAC and Numismatics are never on a run's
+// classpath, so each environment really only has its own two backends.
+// Client usernames match that server's ops file (scripts/dev/ops*.json).
+def devEnvs = [
+        'ftb-lc'  : [claim: 'ftb', currency: 'lc', server: 'server', serverDir: 'run',
+                     clients: [client: 'Kestrel92', client2: 'WillowDusk', client3: 'member']],
+        'opac-num': [claim: 'opac', currency: 'num', server: 'serverOpac', serverDir: 'run-opac-server',
+                     clients: [clientOpac1: 'OpacOwner', clientOpac2: 'OpacOfficer', clientOpac3: 'opacMember']],
+        'ftb-num' : [claim: 'ftb', currency: 'num', server: 'serverFtbNum', serverDir: 'run-ftb-num-server',
+                     clients: [clientFtbNum1: 'Kestrel92', clientFtbNum2: 'WillowDusk']],
+        'opac-lc' : [claim: 'opac', currency: 'lc', server: 'serverOpacLc', serverDir: 'run-opac-lc-server',
+                     clients: [clientOpacLc1: 'OpacOwner', clientOpacLc2: 'OpacOfficer']],
+]
+
 neoForge {
     version = project.neo_version
 
@@ -51,60 +68,47 @@ neoForge {
     }
 
     runs {
-        client {
-            client()
-            ideName = 'Client 1'
-            // Split from run/ (the server's directory): client-only test mods like
-            // Sodium/Iris crash a dedicated server hard (Sodium's PreLaunchChecks
-            // service unconditionally touches LWJGL, which a server classpath simply
-            // doesn't have) - run/mods must stay server-safe, so Client 1 needs its
-            // own mods folder just like Client 2 already has.
-            gameDirectory = project.layout.projectDirectory.dir('run-client1')
-            systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
-            // "neoforge-" in MDG's own default ignoreList also matches Xaero jars like
-            // xaeros-minimap-neoforge-1.21.1-*.jar. Using jvmArgument('-DignoreList=...')
-            // here just appended a second -DignoreList after the plugin's own default one,
-            // and the later one silently wins (both end up on the command line, last -D for
-            // the same key overrides the earlier one) — so the narrowed value never took
-            // effect. systemProperty(...) instead writes into the same managed property map
-            // as the plugin's default, so it actually overrides it.
-            systemProperty 'ignoreList', 'mixinextras-neoforge-0.5.3.jar,client-extra,neoforge-21.'
-            programArgument '--username'
-            programArgument 'Kestrel92'
-            programArgument '--width'
-            programArgument devClientWidth
-            programArgument '--height'
-            programArgument devClientHeight
-        }
-
-        client2 {
-            client()
-            ideName = 'Client 2'
-            gameDirectory = project.layout.projectDirectory.dir('run-client2')
-            systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
-            systemProperty 'ignoreList', 'mixinextras-neoforge-0.5.3.jar,client-extra,neoforge-21.'
-            programArgument '--username'
-            programArgument 'WillowDusk'
-            programArgument '--width'
-            programArgument devClientWidth
-            programArgument '--height'
-            programArgument devClientHeight
-        }
-
-        server {
-            server()
-            programArgument '--nogui'
-            systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
-            // owo-lib falls back to Owo.DEBUG (true in any dev run) for whether its
-            // handshake is required, which then makes it skip registering the
-            // "owo:handshake_off" channel that a normally-packaged (non-dev) client
-            // always registers - causing "channel missing on server" disconnects.
-            // Force it off explicitly so this dev server behaves like production.
-            systemProperty 'owo.handshake.enabled', 'false'
-            // NOTE: dev server config is applied in-process by scripts/run-server.ps1
-            // before Gradle starts. We intentionally do NOT wire applyDevServerConfig
-            // as taskBefore here: spawning a fresh powershell.exe from the Gradle Exec
-            // task can hang on Windows, which blocked :runServer from ever starting.
+        devEnvs.each { envName, env ->
+            register(env.server) {
+                server()
+                ideName = "Server (${envName})"
+                gameDirectory = project.layout.projectDirectory.dir(env.serverDir)
+                // Numismatics' constructor does URI.create() on this property; MDG's
+                // default is a raw Windows path ("C:\...", not a valid URI) and
+                // crashes it. Same file, passed as a proper file: URI.
+                systemProperty 'log4j2.configurationFile', file("build/moddev/${env.server}Log4j2.xml").toURI().toString()
+                programArgument '--nogui'
+                systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
+                // owo-lib falls back to Owo.DEBUG (true in any dev run) for whether its
+                // handshake is required, which then makes it skip registering the
+                // "owo:handshake_off" channel that a normally-packaged (non-dev) client
+                // always registers - causing "channel missing on server" disconnects.
+                systemProperty 'owo.handshake.enabled', 'false'
+                // Dev server config (ops, properties, ports) is applied by
+                // scripts/start-server.ps1 before Gradle starts - an Exec task
+                // spawning powershell.exe from Gradle can hang on Windows.
+            }
+            env.clients.eachWithIndex { runName, username, index ->
+                register(runName) {
+                    client()
+                    ideName = "Client ${envName} ${index + 1}"
+                    // Own directory per client: client-only mods (Sodium, Iris, ...)
+                    // crash a dedicated server, so they never share a mods folder.
+                    gameDirectory = project.layout.projectDirectory.dir("clients/${envName}-${index + 1}")
+                    systemProperty 'log4j2.configurationFile', file("build/moddev/${runName}Log4j2.xml").toURI().toString()
+                    systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
+                    // "neoforge-" in MDG's own default ignoreList also matches Xaero jars like
+                    // xaeros-minimap-neoforge-1.21.1-*.jar; systemProperty (not jvmArgument)
+                    // replaces MDG's default instead of adding a second, ignored -D.
+                    systemProperty 'ignoreList', 'mixinextras-neoforge-0.5.3.jar,client-extra,neoforge-21.'
+                    programArgument '--username'
+                    programArgument username
+                    programArgument '--width'
+                    programArgument devClientWidth
+                    programArgument '--height'
+                    programArgument devClientHeight
+                }
+            }
         }
     }
 
@@ -117,15 +121,29 @@ neoForge {
 
 configurations {
     runtimeClasspath.extendsFrom localRuntime
-    // Client-only test mods (Xaero's Minimap/World Map + the FTB Chunks compat addon):
-    // resolved here and dropped straight into run/mods (see copyXaeroTestMods below)
-    // instead of via clientAdditionalRuntimeClasspath. MDG's "userdev mods and services"
-    // legacy-classpath locator silently skipped these jars as non-candidates even though
-    // they carry a valid META-INF/neoforge.mods.toml (confirmed via -Dforge.logging.marker.scan
-    // debug tracing) — root cause not pinned down in FML/MDG sources, but the real
-    // mods-folder locator (the same one that scans a player's mods/ folder) reliably
-    // picks them up, so we just use that instead.
+    // Every backend mod is dropped into the run's mods folder (see the copy
+    // tasks below) instead of the classpath: MDG's "userdev mods and services"
+    // legacy-classpath locator silently skipped some of these jars, while the
+    // real mods-folder locator reliably picks them up - and it keeps each dev
+    // environment to exactly its own backends.
     xaeroTestMods {
+        canBeConsumed = false
+        canBeResolved = true
+    }
+    ftbTestMods {
+        canBeConsumed = false
+        canBeResolved = true
+        transitive = false
+    }
+    opacTestMods {
+        canBeConsumed = false
+        canBeResolved = true
+    }
+    lcTestMods {
+        canBeConsumed = false
+        canBeResolved = true
+    }
+    numismaticsTestMods {
         canBeConsumed = false
         canBeResolved = true
     }
@@ -167,14 +185,18 @@ repositories {
 dependencies {
     // Forces the resolved architectury-neoforge version above the 13.0.8 that
     // ftb-library/teams/chunks all transitively request (see gradle.properties).
-    implementation "dev.architectury:architectury-neoforge:${architectury_version}"
+    compileOnly "dev.architectury:architectury-neoforge:${architectury_version}"
 
-    implementation "dev.ftb.mods:ftb-library-neoforge:${ftb_library_version}"
-    implementation "dev.ftb.mods:ftb-teams-neoforge:${ftb_teams_version}"
-    implementation "dev.ftb.mods:ftb-chunks-neoforge:${ftb_chunks_version}"
+    compileOnly "dev.ftb.mods:ftb-library-neoforge:${ftb_library_version}"
+    compileOnly "dev.ftb.mods:ftb-teams-neoforge:${ftb_teams_version}"
+    compileOnly "dev.ftb.mods:ftb-chunks-neoforge:${ftb_chunks_version}"
+    ftbTestMods "dev.architectury:architectury-neoforge:${architectury_version}"
+    ftbTestMods "dev.ftb.mods:ftb-library-neoforge:${ftb_library_version}"
+    ftbTestMods "dev.ftb.mods:ftb-teams-neoforge:${ftb_teams_version}"
+    ftbTestMods "dev.ftb.mods:ftb-chunks-neoforge:${ftb_chunks_version}"
 
     compileOnly "maven.modrinth:lightmans-currency:${lightmanscurrency_version}"
-    localRuntime "maven.modrinth:lightmans-currency:${lightmanscurrency_version}"
+    lcTestMods "maven.modrinth:lightmans-currency:${lightmanscurrency_version}"
 
     // Xaero's World Map + the FTB Chunks compat addon are an OPTIONAL
     // integration (see lc_ftb_hook_xaero.mixins.json, required=false): compileOnly
@@ -187,30 +209,82 @@ dependencies {
     // a normal Maven dependency Gradle can resolve - extracted once into libs/.
     compileOnly files('libs/xaerolib-neoforge-1.21.1-1.7.3.jar')
 
-    // Client-only test mods: Xaero's Minimap + World Map and the FTB Chunks compat
-    // addon that renders FTB Chunks claims on Xaero's maps. Dropped into run/mods and
-    // run-client2/mods by copyXaeroTestMods, never onto the server's classpath.
+    // Client-only test mods: Xaero's Minimap + World Map, plus the FTB Chunks
+    // compat addon (only copied into FTB environments).
     xaeroTestMods "maven.modrinth:xaeros-minimap:${xaeros_minimap_version}"
     xaeroTestMods "maven.modrinth:xaeros-world-map:${xaeros_worldmap_version}"
     xaeroTestMods "curse.maven:ftb-chunks-x-xaeros-compat-${ftb_xaero_compat_project}:${ftb_xaero_compat_file}"
+
+    // OPAC (Open Parties and Claims) + Numismatics: optional backends -
+    // compileOnly so their adapters compile against the real API.
+    compileOnly "curse.maven:open-parties-and-claims-${opac_project}:${opac_file}"
+    compileOnly "curse.maven:createnumismatics-${numismatics_project}:${numismatics_file}"
+
+    opacTestMods "curse.maven:open-parties-and-claims-${opac_project}:${opac_file}"
+    numismaticsTestMods "curse.maven:createnumismatics-${numismatics_project}:${numismatics_file}"
+    // Numismatics hard-requires Create [6.0.10,6.1.0). Taken from this
+    // CurseForge instance's own mods folder (the exact jar the pack ships)
+    // rather than a Maven coordinate - dev-environment only.
+    def packCreateJar = file("${rootDir}/../../mods/create-1.21.1-6.0.10.jar")
+    if (packCreateJar.exists()) {
+        numismaticsTestMods files(packCreateJar)
+    }
 }
 
-def copyXaeroTestMods = tasks.register('copyXaeroTestMods', Copy) {
-    group = 'neoforge'
-    description = 'Drops Xaero\'s Minimap/World Map + the FTB Chunks compat addon into run-client1/mods for Client 1'
-    from configurations.xaeroTestMods
-    into layout.projectDirectory.dir('run-client1/mods')
+// Fills every dev run's mods folder with exactly its environment's backends
+// (+ Xaero for clients; the FTB Chunks Xaero addon only in FTB environments).
+def backendModSets = [
+        ftb : configurations.ftbTestMods,
+        opac: configurations.opacTestMods,
+        lc  : configurations.lcTestMods,
+        num : configurations.numismaticsTestMods,
+]
+// A Copy task never removes the previous version of a jar it copied before, and
+// NeoForge then silently loads the newest one - so a dev run could test another
+// version than gradle.properties says (2026-10-09: LC 2.3.0.6 instead of 2.3.0.5).
+// Before copying, drop other versions of exactly the jars being copied; every
+// other mod in the folder stays.
+def jarBaseName = { String fileName -> fileName.replaceFirst(/-\d.*$/, '') }
+def removeStaleVersions = { Task copyTask, File modsDir ->
+    if (!modsDir.directory) {
+        return
+    }
+    def incoming = copyTask.inputs.sourceFiles.files.collect { it.name } as Set
+    def incomingBases = incoming.collect { jarBaseName(it) } as Set
+    modsDir.listFiles().findAll { it.name.endsWith('.jar') && !(it.name in incoming) && jarBaseName(it.name) in incomingBases }
+            .each { stale ->
+                logger.lifecycle("Removing stale dev mod ${stale.name} from ${modsDir}")
+                stale.delete()
+            }
 }
-
-def copyXaeroTestModsClient2 = tasks.register('copyXaeroTestModsClient2', Copy) {
-    group = 'neoforge'
-    description = 'Drops Xaero\'s Minimap/World Map + the FTB Chunks compat addon into run-client2/mods for Client 2'
-    from configurations.xaeroTestMods
-    into layout.projectDirectory.dir('run-client2/mods')
+devEnvs.each { envName, env ->
+    def serverCopy = tasks.register("copyDevMods_${env.server}", Copy) {
+        group = 'neoforge'
+        description = "Drops the ${envName} backend mods into ${env.serverDir}/mods"
+        from backendModSets[env.claim]
+        from backendModSets[env.currency]
+        into layout.projectDirectory.dir("${env.serverDir}/mods")
+        doFirst { removeStaleVersions(it, file("${env.serverDir}/mods")) }
+    }
+    tasks.named("run${env.server.capitalize()}").configure { dependsOn(serverCopy) }
+    env.clients.eachWithIndex { runName, username, index ->
+        def clientDir = "clients/${envName}-${index + 1}"
+        def clientCopy = tasks.register("copyDevMods_${runName}", Copy) {
+            group = 'neoforge'
+            description = "Drops the ${envName} backend mods + Xaero into ${clientDir}/mods"
+            from backendModSets[env.claim]
+            from backendModSets[env.currency]
+            from(configurations.xaeroTestMods) {
+                if (env.claim != 'ftb') {
+                    exclude '*ftb*'
+                }
+            }
+            into layout.projectDirectory.dir("${clientDir}/mods")
+            doFirst { removeStaleVersions(it, file("${clientDir}/mods")) }
+        }
+        tasks.named("run${runName.capitalize()}").configure { dependsOn(clientCopy) }
+    }
 }
-
-tasks.named('runClient').configure { dependsOn(copyXaeroTestMods) }
-tasks.named('runClient2').configure { dependsOn(copyXaeroTestModsClient2) }
 
 var generateModMetadata = tasks.register('generateModMetadata', ProcessResources) {
     var replaceProperties = [
@@ -228,6 +302,7 @@ var generateModMetadata = tasks.register('generateModMetadata', ProcessResources
             ftb_teams_version      : ftb_teams_version,
             ftb_chunks_version     : ftb_chunks_version,
             lightmanscurrency_version: lightmanscurrency_version,
+            lightmanscurrency_version_min: lightmanscurrency_version_min,
             xaero_mixin_required   : xaero_mixin_required,
             xaero_mixin_default_require: xaero_mixin_default_require
     ]

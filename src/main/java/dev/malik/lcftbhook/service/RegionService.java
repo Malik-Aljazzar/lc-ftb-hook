@@ -1,10 +1,5 @@
 package dev.malik.lcftbhook.service;
 
-import dev.ftb.mods.ftbchunks.api.ChunkTeamData;
-import dev.ftb.mods.ftbchunks.api.ClaimedChunk;
-import dev.ftb.mods.ftbchunks.api.FTBChunksAPI;
-import dev.ftb.mods.ftbteams.api.FTBTeamsAPI;
-import dev.ftb.mods.ftbteams.api.Team;
 import dev.malik.lcftbhook.LCFtbHook;
 import dev.malik.lcftbhook.data.ChunkOwnership;
 import dev.malik.lcftbhook.data.ChunkPosKey;
@@ -17,11 +12,14 @@ import dev.malik.lcftbhook.network.PendingStateSync;
 import dev.malik.lcftbhook.network.SyncPublicRegionsPayload;
 import dev.malik.lcftbhook.network.SyncRegionMembershipPayload;
 import dev.malik.lcftbhook.network.SyncRegionsPayload;
+import dev.malik.lcftbhook.port.Backends;
+import dev.malik.lcftbhook.port.claim.ClaimPort;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.neoforge.network.PacketDistributor;
 
+import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -40,60 +38,90 @@ public final class RegionService {
     private RegionService() {
     }
 
-    public static Region createRegion(MinecraftServer server, Team team, String name) {
+    public static Region createRegion(MinecraftServer server, UUID teamId, String name) {
         Region region = Region.create(name);
         // New regions insert at regionOrder index 0 (dismantled first) until
         // dragged elsewhere - RegionListScreen's reversed display puts that
         // at the visual BOTTOM (least-prioritized), which is the right
         // default for an unconfigured region.
-        FtbHookSavedData.get(server).addRegion(team.getTeamId(), region, true);
-        syncRegionsToTeam(server, team);
+        FtbHookSavedData.get(server).addRegion(teamId, region, true);
+        syncRegionsToTeam(server, teamId);
         return region;
     }
 
     /** Creates a new region and queues the given selection into it in one action, e.g. from the marketplace/map context menu's "New Region from Selection...". */
     public static void createRegionAndAssign(ServerPlayer player, String name, List<String> chunkKeys) {
-        if (name == null || name.isBlank() || !FTBTeamsAPI.api().isManagerLoaded()) {
+        if (name == null || name.isBlank()) {
             return;
         }
-        Team team = FTBTeamsAPI.api().getManager().getTeamForPlayer(player).orElse(null);
-        if (team == null || !team.getRankForPlayer(player.getUUID()).isMemberOrBetter()) {
+        UUID teamId = TeamCatalog.managedTeamOf(player.server, player.getUUID());
+        if (teamId == null) {
             return;
         }
-        Region region = createRegion(player.server, team, name.trim());
+        Region region = createRegion(player.server, teamId, name.trim());
         handleAssignmentRequest(player, chunkKeys, region.id());
     }
 
-    public static boolean deleteRegion(MinecraftServer server, Team team, UUID regionId) {
-        boolean removed = FtbHookSavedData.get(server).removeRegion(team.getTeamId(), regionId);
+    public static boolean deleteRegion(MinecraftServer server, UUID teamId, UUID regionId) {
+        boolean removed = FtbHookSavedData.get(server).removeRegion(teamId, regionId);
         if (removed) {
-            syncRegionsToTeam(server, team);
+            syncRegionsToTeam(server, teamId);
             broadcastRegionMembership(server);
-            PendingStateSync.syncTeam(server, team);
+            PendingStateSync.syncTeam(server, teamId);
         }
         return removed;
     }
 
-    public static boolean renameRegion(MinecraftServer server, Team team, UUID regionId, String newName) {
+    public static boolean renameRegion(MinecraftServer server, UUID teamId, UUID regionId, String newName) {
         FtbHookSavedData savedData = FtbHookSavedData.get(server);
-        Region region = savedData.getRegion(team.getTeamId(), regionId);
+        Region region = savedData.getRegion(teamId, regionId);
         if (region == null || region.isDefault() || newName == null || newName.isBlank()) {
             return false;
         }
-        savedData.updateRegion(team.getTeamId(), region.withName(newName.trim()));
-        syncRegionsToTeam(server, team);
+        savedData.updateRegion(teamId, region.withName(newName.trim()));
+        syncRegionsToTeam(server, teamId);
         return true;
     }
 
-    public static boolean setAllowPrivateSelling(MinecraftServer server, Team team, UUID regionId, boolean allow) {
+    public static boolean setAllowPrivateSelling(MinecraftServer server, UUID teamId, UUID regionId, boolean allow) {
         FtbHookSavedData savedData = FtbHookSavedData.get(server);
-        Region region = savedData.getRegion(team.getTeamId(), regionId);
+        Region region = savedData.getRegion(teamId, regionId);
         if (region == null) {
             return false;
         }
-        savedData.updateRegion(team.getTeamId(), region.withAllowPrivateSelling(allow));
-        syncRegionsToTeam(server, team);
+        savedData.updateRegion(teamId, region.withAllowPrivateSelling(allow));
+        if (!allow && cancelPrivateListingsInRegion(savedData, teamId, regionId)) {
+            MarketplaceService.broadcastChunkOwnership(server);
+        }
+        syncRegionsToTeam(server, teamId);
         return true;
+    }
+
+    /**
+     * Cancels every currently-listed PRIVATE (non-country) listing in this
+     * region, immediately - state/"country" listings are entirely
+     * unaffected, this setting is only ever about privately-owned chunks
+     * reselling themselves. Previously this only happened indirectly, and
+     * only for a chunk whose region assignment happened to get re-applied
+     * later (see {@link #reclampOverrideToRegion}) - disabling the toggle
+     * left already-listed private chunks fully live and buyable until
+     * something else coincidentally triggered that path.
+     */
+    private static boolean cancelPrivateListingsInRegion(FtbHookSavedData savedData, UUID teamId, UUID regionId) {
+        boolean changed = false;
+        for (var entry : savedData.getChunkOwnershipForTeam(teamId).entrySet()) {
+            String chunkKey = entry.getKey();
+            ChunkOwnership ownership = entry.getValue();
+            if (ownership.isStateOwned() || !ownership.isListed()) {
+                continue;
+            }
+            if (!savedData.getChunkRegion(teamId, chunkKey).equals(regionId)) {
+                continue;
+            }
+            savedData.setChunkOwnership(teamId, chunkKey, ownership.withListingPrice(null));
+            changed = true;
+        }
+        return changed;
     }
 
     /**
@@ -103,21 +131,21 @@ public final class RegionService {
      * apply to already-listed chunks immediately - buyability/highlighting
      * are computed live from this same data on every render, not cached.
      */
-    public static boolean setBuyerAccess(MinecraftServer server, Team team, UUID regionId, String access) {
+    public static boolean setBuyerAccess(MinecraftServer server, UUID teamId, UUID regionId, String access) {
         FtbHookSavedData savedData = FtbHookSavedData.get(server);
-        Region region = savedData.getRegion(team.getTeamId(), regionId);
+        Region region = savedData.getRegion(teamId, regionId);
         if (region == null) {
             return false;
         }
-        savedData.updateRegion(team.getTeamId(), region.withBuyerAccess(access));
-        syncRegionsToTeam(server, team);
+        savedData.updateRegion(teamId, region.withBuyerAccess(access));
+        syncRegionsToTeam(server, teamId);
         return true;
     }
 
-    public static boolean reorderRegions(MinecraftServer server, Team team, List<UUID> newOrder) {
-        boolean applied = FtbHookSavedData.get(server).setRegionOrder(team.getTeamId(), newOrder);
+    public static boolean reorderRegions(MinecraftServer server, UUID teamId, List<UUID> newOrder) {
+        boolean applied = FtbHookSavedData.get(server).setRegionOrder(teamId, newOrder);
         if (applied) {
-            syncRegionsToTeam(server, team);
+            syncRegionsToTeam(server, teamId);
         }
         return applied;
     }
@@ -136,18 +164,19 @@ public final class RegionService {
         return region != null ? region : Region.createDefault();
     }
 
-    public static Region resolveRegion(MinecraftServer server, ClaimedChunk chunk) {
-        Team team = chunk.getTeamData().getTeam();
-        if (team == null) {
-            return Region.createDefault();
-        }
-        return resolveRegion(server, team.getTeamId(), ChunkPosKey.encode(chunk.getPos()));
+    /** The region protecting this chunk right now (Default-at-minimum if unclaimed or unsettled). */
+    public static Region resolveRegion(MinecraftServer server, ClaimPort.ChunkKey chunk) {
+        UUID teamId = Backends.claim().ownerTeamOf(server, chunk.dimension(), chunk.pos().x, chunk.pos().z);
+        return teamId == null ? Region.createDefault() : resolveRegion(server, teamId, ChunkPosKey.encode(chunk));
     }
 
-    /** Convenience for mixin enforcement code running on the server thread, mirrors the old land-chunk lookup shape. */
-    public static Region resolveRegion(ClaimedChunk chunk) {
-        MinecraftServer server = net.neoforged.neoforge.server.ServerLifecycleHooks.getCurrentServer();
-        return server != null && chunk != null ? resolveRegion(server, chunk) : Region.createDefault();
+    /**
+     * A chunk's private-owner protection override (loosens - never tightens
+     * - the region's own value, see {@link dev.malik.lcftbhook.service.ProtectionResolution}).
+     */
+    public static ChunkOwnership resolveOwnership(MinecraftServer server, ClaimPort.ChunkKey chunk) {
+        UUID teamId = Backends.claim().ownerTeamOf(server, chunk.dimension(), chunk.pos().x, chunk.pos().z);
+        return teamId == null ? ChunkOwnership.EMPTY : FtbHookSavedData.get(server).getChunkOwnership(teamId, ChunkPosKey.encode(chunk));
     }
 
     public static void handleAssignmentRequest(ServerPlayer player, List<String> chunkKeys, UUID targetRegionId) {
@@ -155,34 +184,31 @@ public final class RegionService {
             return;
         }
         MinecraftServer server = player.server;
-        if (!FTBTeamsAPI.api().isManagerLoaded() || !FTBChunksAPI.api().isManagerLoaded()) {
-            return;
-        }
-        Team team = FTBTeamsAPI.api().getManager().getTeamForPlayer(player).orElse(null);
-        if (team == null || !team.getRankForPlayer(player.getUUID()).isMemberOrBetter()) {
+        UUID teamId = TeamCatalog.managedTeamOf(server, player.getUUID());
+        if (teamId == null) {
             player.displayClientMessage(Component.translatable("message.lc_ftb_hook.region_assign_denied"), false);
             return;
         }
         FtbHookSavedData savedData = FtbHookSavedData.get(server);
-        if (savedData.getRegion(team.getTeamId(), targetRegionId) == null) {
+        if (savedData.getRegion(teamId, targetRegionId) == null) {
             return;
         }
-        if (savedData.isProtectionLocked(team.getTeamId())) {
-            player.displayClientMessage(Component.translatable("message.lc_ftb_hook.protection_locked_change"), false);
-            return;
-        }
+        // No isProtectionLocked gate here (unlike before) - a region
+        // assignment is ALREADY always queued, never applied immediately
+        // (see applyPendingRegionAssignments, only committed at the next
+        // upkeep settlement), so there's no "already broke, don't let it get
+        // worse" case to guard against - the same "always settable, pending
+        // until it can actually apply" principle as setRegionProperty.
 
-        TeamPendingState pendingState = savedData.getPendingState(team.getTeamId());
+        TeamPendingState pendingState = savedData.getPendingState(teamId);
         int queued = 0;
         for (String rawKey : chunkKeys) {
-            var pos = ChunkPosKey.toChunkDimPos(rawKey);
-            ClaimedChunk chunk = FTBChunksAPI.api().getManager().getChunk(pos);
-            if (chunk == null || chunk.getTeamData().getTeam() == null
-                    || !chunk.getTeamData().getTeam().getTeamId().equals(team.getTeamId())) {
+            ClaimPort.ChunkKey chunk = ChunkPosKey.toChunkKey(rawKey);
+            if (!teamId.equals(Backends.claim().ownerTeamOf(server, chunk.dimension(), chunk.pos().x, chunk.pos().z))) {
                 continue;
             }
-            String key = ChunkPosKey.encode(pos);
-            UUID currentRegion = savedData.getChunkRegion(team.getTeamId(), key);
+            String key = ChunkPosKey.encode(chunk);
+            UUID currentRegion = savedData.getChunkRegion(teamId, key);
             if (currentRegion.equals(targetRegionId) && !pendingState.isPendingRegionAssignment(key)) {
                 continue;
             }
@@ -191,17 +217,16 @@ public final class RegionService {
         }
 
         if (queued > 0) {
-            savedData.setPendingState(team.getTeamId(), pendingState);
-            PendingStateSync.syncTeam(server, team);
+            savedData.setPendingState(teamId, pendingState);
+            PendingStateSync.syncTeam(server, teamId);
             player.displayClientMessage(
                     Component.translatable("message.lc_ftb_hook.region_assign_queued", queued), false
             );
         }
     }
 
-    public static TeamPendingState applyPendingRegionAssignments(MinecraftServer server, Team team, TeamPendingState pendingState) {
+    public static TeamPendingState applyPendingRegionAssignments(MinecraftServer server, UUID teamId, TeamPendingState pendingState) {
         FtbHookSavedData savedData = FtbHookSavedData.get(server);
-        UUID teamId = team.getTeamId();
         TeamPendingState updated = pendingState;
         boolean changed = false;
 
@@ -286,52 +311,6 @@ public final class RegionService {
     }
 
     /**
-     * A region's own property value just moved from {@code oldValue} to
-     * {@code newValue} - either the officer/owner deliberately edited it
-     * (immediately, or a queued edit finally being committed at settlement),
-     * or the automatic upkeep dismantle/restore cycle moved it.
-     * <p>
-     * Only a genuine cross-tier LOOSENING (see
-     * {@link ProtectionResolution#strictness}) clears anything, and only
-     * chunk-level overrides in THIS region for THIS property that are now
-     * stricter than the new baseline: the region owner deliberately decided
-     * this for the whole region, including privately-owned chunks in it, so
-     * there's no "wait for funds and it springs back" case to preserve an
-     * override for here - unlike an automatic dismantle
-     * ({@link ProtectionRollbackService#suspendProtection}), which only ever
-     * lowers a region's value (never higher than it was), so calling this
-     * from there is always a no-op by construction. A same-tier move (e.g.
-     * Allies -> Team) never clears anything either, since the override
-     * stays looser-or-equal to the new value regardless.
-     */
-    static boolean clearOverridesInvalidatedByRegionChange(
-            FtbHookSavedData savedData, UUID teamId, UUID regionId, ProtectionProperty property, String newValue
-    ) {
-        Map<String, ChunkOwnership> ownershipForTeam = savedData.getChunkOwnershipForTeam(teamId);
-        if (ownershipForTeam.isEmpty()) {
-            return false;
-        }
-        boolean changed = false;
-        for (var entry : ownershipForTeam.entrySet()) {
-            String chunkKey = entry.getKey();
-            ChunkOwnership ownership = entry.getValue();
-            String overrideValue = ownership.protectionOverride().get(property.id());
-            if (overrideValue == null) {
-                continue;
-            }
-            if (!savedData.getChunkRegion(teamId, chunkKey).equals(regionId)) {
-                continue;
-            }
-            if (ProtectionResolution.isLooserOrEqual(property, overrideValue, newValue)) {
-                continue;
-            }
-            savedData.setChunkOwnership(teamId, chunkKey, ownership.withoutOverrideProperty(property.id()));
-            changed = true;
-        }
-        return changed;
-    }
-
-    /**
      * Applies a protection-property edit made from the Region settings
      * screen. Cost-neutral changes (vs. the currently billed price) apply
      * immediately; anything else is queued for the next upkeep settlement,
@@ -346,23 +325,24 @@ public final class RegionService {
             String newValue
     ) {
         MinecraftServer server = player.server;
-        if (!FTBTeamsAPI.api().isManagerLoaded()) {
-            return;
-        }
-        Team team = FTBTeamsAPI.api().getManager().getTeamForPlayer(player).orElse(null);
-        if (team == null || !team.getRankForPlayer(player.getUUID()).isMemberOrBetter()) {
+        UUID teamId = TeamCatalog.managedTeamOf(server, player.getUUID());
+        if (teamId == null) {
             return;
         }
         FtbHookSavedData savedData = FtbHookSavedData.get(server);
-        UUID teamId = team.getTeamId();
         Region region = savedData.getRegion(teamId, regionId);
         if (region == null) {
             return;
         }
-        if (savedData.isProtectionLocked(teamId)) {
-            player.displayClientMessage(Component.translatable("message.lc_ftb_hook.protection_locked_change"), false);
-            return;
-        }
+        // No isProtectionLocked gate here (unlike before) - a change is
+        // always settable, even while the team is already frozen for
+        // non-payment: a cost-neutral edit still applies immediately below
+        // (harmless - it doesn't add to what's already owed), and any
+        // cost-increasing edit already queues as pending rather than
+        // applying (see the oldPrice != newPrice branch further down) -
+        // exactly the "always settable, pending until affordable" principle
+        // this was supposed to follow, which the flat rejection here broke
+        // for a team that's already frozen.
 
         String key = RegionPropertyKey.encode(regionId, property.id());
         TeamPendingState pendingState = savedData.getPendingState(teamId);
@@ -371,13 +351,13 @@ public final class RegionService {
             TeamPendingState updated;
             if (property.isAtMinimum(newValue)) {
                 updated = pendingState.withoutPendingProperty(key);
-                notifyTeam(team, "message.lc_ftb_hook.protection_pending_cancelled");
+                ProtectionService.notifyTeamManagers(server, teamId, Component.translatable("message.lc_ftb_hook.protection_pending_cancelled"));
             } else {
                 updated = pendingState.withPendingProperty(key, newValue);
-                notifyTeam(team, "message.lc_ftb_hook.protection_change_pending");
+                ProtectionService.notifyTeamManagers(server, teamId, Component.translatable("message.lc_ftb_hook.protection_change_pending"));
             }
             savedData.setPendingState(teamId, updated);
-            syncState(server, team);
+            syncState(server, teamId);
             return;
         }
 
@@ -385,13 +365,13 @@ public final class RegionService {
         if (newValue.equals(liveValue)) {
             if (pendingState.hasPendingProperty(key)) {
                 savedData.setPendingState(teamId, pendingState.withoutPendingProperty(key));
-                notifyTeam(team, "message.lc_ftb_hook.protection_pending_cancelled");
-                syncState(server, team);
+                ProtectionService.notifyTeamManagers(server, teamId, Component.translatable("message.lc_ftb_hook.protection_pending_cancelled"));
+                syncState(server, teamId);
             }
             return;
         }
 
-        // ProtectionPricing.calculateTotalUpkeepCopper(server, team, pendingState)
+        // ProtectionPricing.calculateTotalUpkeepCopper(server, teamId, pendingState)
         // (the 3-arg overload) prices via ProtectionRollbackService.pricingProperties,
         // which deliberately EXCLUDES any pendingProperties entry whose region is
         // currently at minimum - that's correct for a genuine dismantle-restore
@@ -405,7 +385,7 @@ public final class RegionService {
         // genuine cost increase is supposed to get. Building the pricing map
         // explicitly and force-including this one key (already proven NOT to be
         // a real dismantle by the isDismantled() check above) fixes that.
-        Map<String, String> basePricing = ProtectionRollbackService.pricingProperties(server, team, pendingState);
+        Map<String, String> basePricing = ProtectionRollbackService.pricingProperties(server, teamId, pendingState);
         // basePricing carries THIS key's own value from whatever was most
         // recently queued for it (if anything) - e.g. cycling Private ->
         // Public -> Allies in one sitting leaves Public queued when the
@@ -419,10 +399,10 @@ public final class RegionService {
         // target via basePricing.
         Map<String, String> oldPricing = new java.util.HashMap<>(basePricing);
         oldPricing.put(key, liveValue);
-        long oldPrice = ProtectionPricing.calculateTotalUpkeepCopper(server, team, pendingState, oldPricing);
+        long oldPrice = ProtectionPricing.calculateTotalUpkeepCopper(server, teamId, pendingState, oldPricing);
         Map<String, String> newPricing = new java.util.HashMap<>(basePricing);
         newPricing.put(key, newValue);
-        long newPrice = ProtectionPricing.calculateTotalUpkeepCopper(server, team, pendingState, newPricing);
+        long newPrice = ProtectionPricing.calculateTotalUpkeepCopper(server, teamId, pendingState, newPricing);
         TeamPendingState simulated = pendingState.withPendingProperty(key, newValue);
 
         if (oldPrice == newPrice) {
@@ -430,34 +410,30 @@ public final class RegionService {
                     ? region.withoutProperty(property.id())
                     : region.withProperty(property.id(), newValue);
             savedData.updateRegion(teamId, updatedRegion);
-            if (clearOverridesInvalidatedByRegionChange(savedData, teamId, regionId, property, newValue)) {
-                MarketplaceService.broadcastChunkOwnership(server);
-            }
             if (pendingState.hasPendingProperty(key)) {
                 savedData.setPendingState(teamId, pendingState.withoutPendingProperty(key));
             }
         } else {
             savedData.setPendingState(teamId, simulated);
-            notifyTeam(team, "message.lc_ftb_hook.protection_change_pending");
+            ProtectionService.notifyTeamManagers(server, teamId, Component.translatable("message.lc_ftb_hook.protection_change_pending"));
         }
-        syncState(server, team);
+        syncState(server, teamId);
     }
 
-    public static void onChunkUnclaimed(MinecraftServer server, ClaimedChunk chunk) {
-        String chunkKey = ChunkPosKey.encode(chunk.getPos());
+    /** Region/ownership cleanup after a chunk left its team ({@code teamId} = the team that just lost it, if known). */
+    public static void onChunkUnclaimed(MinecraftServer server, @Nullable UUID teamId, String chunkKey) {
         FtbHookSavedData savedData = FtbHookSavedData.get(server);
         boolean changed = savedData.clearChunkRegion(chunkKey);
         if (savedData.clearChunkOwnership(chunkKey)) {
             MarketplaceService.broadcastChunkOwnership(server);
         }
 
-        Team team = chunk.getTeamData().getTeam();
-        if (team != null) {
-            TeamPendingState pending = savedData.getPendingState(team.getTeamId());
+        if (teamId != null) {
+            TeamPendingState pending = savedData.getPendingState(teamId);
             TeamPendingState cleared = pending.withoutPendingRegionAssignment(chunkKey);
             if (cleared != pending) {
-                savedData.setPendingState(team.getTeamId(), cleared);
-                PendingStateSync.syncTeam(server, team);
+                savedData.setPendingState(teamId, cleared);
+                PendingStateSync.syncTeam(server, teamId);
             }
         }
 
@@ -466,27 +442,20 @@ public final class RegionService {
         }
     }
 
-    public static int countChunks(MinecraftServer server, Team team, UUID regionId) {
-        FtbHookSavedData savedData = FtbHookSavedData.get(server);
-        UUID teamId = team.getTeamId();
-        ChunkTeamData chunkData = FTBChunksAPI.api().getManager().getOrCreateData(team);
-        int count = 0;
-        for (ClaimedChunk chunk : chunkData.getClaimedChunks()) {
-            if (savedData.getChunkRegion(teamId, ChunkPosKey.encode(chunk.getPos())).equals(regionId)) {
-                count++;
-            }
-        }
-        return count;
+    public static int countChunks(MinecraftServer server, UUID teamId, UUID regionId) {
+        return countInRegion(server, teamId, regionId, Backends.claim().claimedChunks(server, teamId));
     }
 
-    /** How many of this region's chunks are currently force-loaded (actual FTB Chunks state, no pending deltas). */
-    public static int countForceLoadedChunks(MinecraftServer server, Team team, UUID regionId) {
+    /** How many of this region's chunks are currently force-loaded (actual claim-backend state, no pending deltas). */
+    public static int countForceLoadedChunks(MinecraftServer server, UUID teamId, UUID regionId) {
+        return countInRegion(server, teamId, regionId, Backends.claim().forceLoadedChunks(server, teamId));
+    }
+
+    private static int countInRegion(MinecraftServer server, UUID teamId, UUID regionId, List<ClaimPort.ChunkKey> chunks) {
         FtbHookSavedData savedData = FtbHookSavedData.get(server);
-        UUID teamId = team.getTeamId();
-        ChunkTeamData chunkData = FTBChunksAPI.api().getManager().getOrCreateData(team);
         int count = 0;
-        for (ClaimedChunk chunk : chunkData.getForceLoadedChunks()) {
-            if (savedData.getChunkRegion(teamId, ChunkPosKey.encode(chunk.getPos())).equals(regionId)) {
+        for (ClaimPort.ChunkKey chunk : chunks) {
+            if (savedData.getChunkRegion(teamId, ChunkPosKey.encode(chunk)).equals(regionId)) {
                 count++;
             }
         }
@@ -494,10 +463,9 @@ public final class RegionService {
     }
 
     /** Same as {@link #countForceLoadedChunks}, plus this region's share of queued pending force-load/unload requests - mirrors {@code ProtectionPricing.countEffectiveForceLoads}, broken down per region. */
-    public static int countEffectiveForceLoadedChunks(MinecraftServer server, Team team, UUID regionId, TeamPendingState pendingState) {
+    public static int countEffectiveForceLoadedChunks(MinecraftServer server, UUID teamId, UUID regionId, TeamPendingState pendingState) {
         FtbHookSavedData savedData = FtbHookSavedData.get(server);
-        UUID teamId = team.getTeamId();
-        int count = countForceLoadedChunks(server, team, regionId);
+        int count = countForceLoadedChunks(server, teamId, regionId);
         for (String chunkKey : pendingState.pendingForceLoads()) {
             if (savedData.getChunkRegion(teamId, chunkKey).equals(regionId)) {
                 count++;
@@ -532,13 +500,12 @@ public final class RegionService {
         java.util.Map<UUID, Integer> forceLoadCounts = new java.util.HashMap<>();
         java.util.Map<UUID, Long> forceLoadCurrentUpkeep = new java.util.HashMap<>();
         java.util.Map<UUID, Long> forceLoadPendingUpkeep = new java.util.HashMap<>();
-        Team team = dev.malik.lcftbhook.teams.FtbTeamCatalog.resolve(server, teamId);
-        if (team != null && FTBChunksAPI.api().isManagerLoaded()) {
+        if (TeamCatalog.exists(server, teamId)) {
             TeamPendingState pendingState = savedData.getPendingState(teamId);
-            ProtectionPricing.ChunkCounts billable = ProtectionPricing.countBillableChunks(server, team);
-            boolean chargeForceLoad = UpkeepGating.shouldChargeForceLoad(server, team);
+            ProtectionPricing.ChunkCounts billable = ProtectionPricing.countBillableChunks(server, teamId);
+            boolean chargeForceLoad = UpkeepGating.shouldChargeForceLoad(server, teamId);
             for (UUID regionId : savedData.getRegionOrder(teamId)) {
-                counts.put(regionId, countChunks(server, team, regionId));
+                counts.put(regionId, countChunks(server, teamId, regionId));
                 Region region = savedData.getRegion(teamId, regionId);
                 ProtectionPricing.RegionChunkCount rc = billable.perRegion().get(regionId);
                 int billableChunks = rc != null ? rc.billableChunks() : 0;
@@ -551,8 +518,8 @@ public final class RegionService {
                     pendingUpkeep.put(regionId,
                             (ProtectionPricing.regionBasePrice(region, pendingState.pendingProperties()) * billableChunks) / ProtectionProperty.PRICE_UNIT_CHUNKS);
                 }
-                int flCurrentCount = countForceLoadedChunks(server, team, regionId);
-                int flPendingCount = countEffectiveForceLoadedChunks(server, team, regionId, pendingState);
+                int flCurrentCount = countForceLoadedChunks(server, teamId, regionId);
+                int flPendingCount = countEffectiveForceLoadedChunks(server, teamId, regionId, pendingState);
                 forceLoadCounts.put(regionId, flCurrentCount);
                 forceLoadCurrentUpkeep.put(regionId, chargeForceLoad ? ProtectionPricing.calculateForceLoadCopper(flCurrentCount) : 0L);
                 forceLoadPendingUpkeep.put(regionId, chargeForceLoad ? ProtectionPricing.calculateForceLoadCopper(flPendingCount) : 0L);
@@ -565,9 +532,9 @@ public final class RegionService {
         );
     }
 
-    public static void syncRegionsToTeam(MinecraftServer server, Team team) {
-        SyncRegionsPayload payload = createRegionsPayload(server, team.getTeamId());
-        for (ServerPlayer member : team.getOnlineMembers()) {
+    public static void syncRegionsToTeam(MinecraftServer server, UUID teamId) {
+        SyncRegionsPayload payload = createRegionsPayload(server, teamId);
+        for (ServerPlayer member : Backends.claim().onlineMembers(server, teamId)) {
             PacketDistributor.sendToPlayer(member, payload);
         }
         broadcastPublicRegions(server);
@@ -585,8 +552,7 @@ public final class RegionService {
         Map<UUID, Region> regionsById = new java.util.HashMap<>();
         Map<UUID, UUID> defaultRegionByTeam = new java.util.HashMap<>();
         FtbHookSavedData savedData = FtbHookSavedData.get(server);
-        for (Team team : dev.malik.lcftbhook.teams.FtbTeamCatalog.allStoredTeams(server)) {
-            UUID teamId = team.getTeamId();
+        for (UUID teamId : Backends.claim().allTeams(server)) {
             for (Region region : savedData.getRegions(teamId).values()) {
                 regionsById.put(region.id(), region);
                 if (region.isDefault()) {
@@ -606,26 +572,16 @@ public final class RegionService {
     }
 
     public static void syncRegionsToPlayer(ServerPlayer player) {
-        if (!FTBTeamsAPI.api().isManagerLoaded()) {
+        UUID teamId = TeamCatalog.teamOf(player.server, player.getUUID());
+        if (teamId == null) {
             return;
         }
-        Team team = FTBTeamsAPI.api().getManager().getTeamForPlayer(player).orElse(null);
-        if (team == null) {
-            return;
-        }
-        PacketDistributor.sendToPlayer(player, createRegionsPayload(player.server, team.getTeamId()));
+        PacketDistributor.sendToPlayer(player, createRegionsPayload(player.server, teamId));
     }
 
-    private static void syncState(MinecraftServer server, Team team) {
-        PendingStateSync.syncTeam(server, team);
-        syncRegionsToTeam(server, team);
-        WarStateSync.onUpkeepFactorsChanged(server, team);
-    }
-
-    private static void notifyTeam(Team team, String messageKey) {
-        Component message = Component.translatable(messageKey);
-        for (ServerPlayer member : team.getOnlineMembers()) {
-            member.displayClientMessage(message, false);
-        }
+    private static void syncState(MinecraftServer server, UUID teamId) {
+        PendingStateSync.syncTeam(server, teamId);
+        syncRegionsToTeam(server, teamId);
+        WarStateSync.onUpkeepFactorsChanged(server, teamId);
     }
 }

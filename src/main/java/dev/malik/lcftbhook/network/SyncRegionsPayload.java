@@ -114,11 +114,7 @@ public record SyncRegionsPayload(
                     payload.currentUpkeepCopper, payload.pendingUpkeepCopper,
                     payload.forceLoadCounts, payload.forceLoadCurrentUpkeepCopper, payload.forceLoadPendingUpkeepCopper
             );
-            dev.malik.lcftbhook.client.gui.RegionListScreen openScreen =
-                    dev.ftb.mods.ftblibrary.util.client.ClientUtils.getCurrentGuiAs(dev.malik.lcftbhook.client.gui.RegionListScreen.class);
-            if (openScreen != null) {
-                openScreen.refreshList();
-            }
+            dev.malik.lcftbhook.client.ClientUiRefresh.refreshRegionList();
         });
     }
 }

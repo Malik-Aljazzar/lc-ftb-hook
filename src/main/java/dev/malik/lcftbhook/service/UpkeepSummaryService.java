@@ -1,11 +1,9 @@
 package dev.malik.lcftbhook.service;
 
-import dev.ftb.mods.ftbchunks.api.ChunkTeamData;
-import dev.ftb.mods.ftbchunks.api.FTBChunksAPI;
-import dev.ftb.mods.ftbteams.api.Team;
 import dev.malik.lcftbhook.data.FtbHookSavedData;
 import dev.malik.lcftbhook.data.TeamPendingState;
 import net.minecraft.server.MinecraftServer;
+import java.util.UUID;
 
 /**
  * Team-wide upkeep totals for the Region list screen's header: protection
@@ -42,20 +40,16 @@ public final class UpkeepSummaryService {
         }
     }
 
-    public static UpkeepSummary compute(MinecraftServer server, Team team) {
+    public static UpkeepSummary compute(MinecraftServer server, UUID teamId) {
         FtbHookSavedData savedData = FtbHookSavedData.get(server);
-        TeamPendingState pendingState = savedData.getPendingState(team.getTeamId());
+        TeamPendingState pendingState = savedData.getPendingState(teamId);
         TeamPendingState empty = new TeamPendingState();
 
-        ChunkTeamData chunkData = FTBChunksAPI.api().isManagerLoaded()
-                ? FTBChunksAPI.api().getManager().getOrCreateData(team)
-                : null;
-
-        int forceLoadCurrentCount = chunkData != null ? ProtectionPricing.countEffectiveForceLoads(chunkData, empty) : 0;
-        int forceLoadPendingCount = chunkData != null ? ProtectionPricing.countEffectiveForceLoads(chunkData, pendingState) : 0;
-        long forceLoadCurrent = UpkeepGating.shouldChargeForceLoad(server, team)
+        int forceLoadCurrentCount = ProtectionPricing.countEffectiveForceLoads(server, teamId, empty);
+        int forceLoadPendingCount = ProtectionPricing.countEffectiveForceLoads(server, teamId, pendingState);
+        long forceLoadCurrent = UpkeepGating.shouldChargeForceLoad(server, teamId)
                 ? ProtectionPricing.calculateForceLoadCopper(forceLoadCurrentCount) : 0L;
-        long forceLoadPending = UpkeepGating.shouldChargeForceLoad(server, team)
+        long forceLoadPending = UpkeepGating.shouldChargeForceLoad(server, teamId)
                 ? ProtectionPricing.calculateForceLoadCopper(forceLoadPendingCount) : 0L;
 
         // baseUpkeepCopper is protection + force-load combined - subtracting
@@ -63,8 +57,22 @@ public final class UpkeepSummaryService {
         // protection alone, using calculateWarCosts as the single source of
         // truth for the combined figure rather than re-deriving it a second,
         // potentially inconsistent way.
-        WarService.WarCostBreakdown warCurrent = WarService.calculateWarCosts(server, team, empty);
-        WarService.WarCostBreakdown warPending = WarService.calculateWarCosts(server, team, pendingState);
+        //
+        // "Pending" deliberately does NOT use calculateWarCosts(server, teamId,
+        // pendingState)'s default overload - that one prices via
+        // ProtectionRollbackService.pricingProperties, which excludes any
+        // pendingProperties entry whose region is still at minimum (correct
+        // for "what's actually billed right now", since a dismantled/not-
+        // yet-restored property isn't live yet - but wrong here, since that
+        // silently excluded exactly the entries this "pending" total exists
+        // to show). Passing pendingState's raw pendingProperties() directly
+        // as the pricing overlay instead prices every queued target as if it
+        // had already settled, matching what RegionService.createRegionsPayload
+        // already does for the per-region figures shown in RegionSettingsScreen -
+        // this brings the Region List's combined total/tooltip in line with
+        // that per-region view instead of silently disagreeing with it.
+        WarCostService.WarCostBreakdown warCurrent = WarCostService.calculateWarCosts(server, teamId, empty);
+        WarCostService.WarCostBreakdown warPending = WarCostService.calculateWarCosts(server, teamId, pendingState, pendingState.pendingProperties());
         long protectionCurrent = warCurrent.baseUpkeepCopper() - forceLoadCurrent;
         long protectionPending = warPending.baseUpkeepCopper() - forceLoadPending;
 

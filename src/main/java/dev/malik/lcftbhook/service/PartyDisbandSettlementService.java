@@ -1,23 +1,19 @@
 package dev.malik.lcftbhook.service;
 
-import dev.ftb.mods.ftbchunks.api.ChunkTeamData;
-import dev.ftb.mods.ftbchunks.api.FTBChunksAPI;
-import dev.ftb.mods.ftbteams.api.Team;
 import dev.malik.lcftbhook.LCFtbHook;
+import dev.malik.lcftbhook.bank.ClaimSettlementContext;
 import dev.malik.lcftbhook.data.FtbHookSavedData;
-import dev.malik.lcftbhook.teams.FtbTeamCatalog;
-import dev.malik.lcftbhook.teams.LcTeamSyncService;
-import dev.malik.lcftbhook.service.WarStateSync;
-import dev.malik.lcftbhook.util.MoneyMessageUtil;
-import dev.malik.lcftbhook.util.MoneyUtil;
-import io.github.lightman314.lightmanscurrency.api.money.bank.IBankAccount;
-import io.github.lightman314.lightmanscurrency.api.money.bank.reference.builtin.PlayerBankReference;
-import io.github.lightman314.lightmanscurrency.api.money.value.MoneyValue;
-import net.minecraft.commands.CommandSourceStack;
+import dev.malik.lcftbhook.port.Backends;
+import dev.malik.lcftbhook.port.currency.CurrencyAccount;
+import dev.malik.lcftbhook.port.currency.CurrencyPort;
+import dev.malik.lcftbhook.port.claim.ClaimPort;
+import dev.malik.lcftbhook.util.Money;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 
+import javax.annotation.Nullable;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -28,12 +24,12 @@ public final class PartyDisbandSettlementService {
     private PartyDisbandSettlementService() {
     }
 
-    public static void settle(MinecraftServer server, Team team) {
-        if (!team.isPartyTeam()) {
-            return;
-        }
-
-        UUID teamId = team.getId();
+    /**
+     * @param claimedChunks the party's chunks, captured by the claim adapter
+     *                      from its own party object - the backend may have
+     *                      already unregistered the party itself by now
+     */
+    public static void settle(MinecraftServer server, UUID teamId, @Nullable UUID ownerId, List<ClaimPort.ChunkKey> claimedChunks) {
         if (!SETTLING.add(teamId)) {
             return;
         }
@@ -43,50 +39,38 @@ public final class PartyDisbandSettlementService {
             // account transfer succeeds — otherwise disbanded teams leave orphaned
             // war references and pending protection entries in SavedData.
             FtbHookSavedData savedData = FtbHookSavedData.get(server);
-            FtbTeamCatalog.dissolveWarLinks(server, teamId);
+            WarService.cleanupTeamWars(server, teamId);
             savedData.setPendingState(teamId, savedData.getPendingState(teamId).cleared());
 
-            UUID ownerId = team.getOwner();
             if (ownerId == null) {
                 return;
             }
 
-            IBankAccount teamAccount = LcTeamSyncService.getLinkedBankAccount(server, teamId);
-            if (teamAccount == null) {
-                LCFtbHook.LOGGER.warn("No linked LC bank account found for disbanding party {}", teamId);
+            CurrencyPort currency = Backends.currency();
+            CurrencyAccount teamAccount;
+            CurrencyAccount ownerAccount;
+            try {
+                teamAccount = currency.teamAccount(server, teamId);
+                ownerAccount = currency.playerAccount(server, ownerId);
+            } catch (IllegalStateException missing) {
+                LCFtbHook.LOGGER.warn("Could not transfer party funds for {}: {}", teamId, missing.getMessage());
                 return;
             }
 
-            IBankAccount ownerAccount = PlayerBankReference.of(ownerId).get();
-            if (ownerAccount == null) {
-                LCFtbHook.LOGGER.warn(
-                        "Could not transfer party funds for {}: missing personal account for owner {}",
-                        teamId,
-                        ownerId
-                );
+            Component accountBalance = Money.formatBalance(teamAccount);
+            PendingChangeService.removeAllForceLoads(server, teamId);
+            int[] unclaimed = {0};
+            ClaimSettlementContext.run(teamId, claimedChunks.size(), () ->
+                    unclaimed[0] = ClaimSettlementHelper.unclaimAll(server, claimedChunks));
+            int unclaimedChunks = unclaimed[0];
+            long refundCopper = ClaimSettlementHelper.refundForFullUnclaim(claimedChunks.size());
+
+            if (teamAccount.isEmpty() && unclaimedChunks == 0) {
                 return;
             }
 
-            Component accountBalance = MoneyMessageUtil.formatBalance(teamAccount);
-            int claimedChunks = 0;
-            int unclaimedChunks = 0;
-            long refundCopper = 0L;
-
-            if (FTBChunksAPI.api().isManagerLoaded()) {
-                PendingChangeService.removeAllForceLoads(server, team);
-                ChunkTeamData chunkData = FTBChunksAPI.api().getManager().getOrCreateData(team);
-                CommandSourceStack source = server.createCommandSourceStack().withSuppressedOutput();
-                claimedChunks = chunkData.getClaimedChunks().size();
-                unclaimedChunks = ClaimSettlementHelper.unclaimAll(chunkData, source);
-                refundCopper = ClaimSettlementHelper.refundForFullUnclaim(claimedChunks);
-            }
-
-            if (teamAccount.getMoneyStorage().isEmpty() && unclaimedChunks == 0) {
-                return;
-            }
-
-            Component totalReceived = MoneyMessageUtil.formatBalance(teamAccount);
-            transferAllFunds(teamAccount, ownerAccount);
+            Component totalReceived = Money.formatBalance(teamAccount);
+            teamAccount.transferAllTo(ownerAccount, "Party Disbanded");
             notifyOwner(server, ownerId, accountBalance, totalReceived, unclaimedChunks, refundCopper);
             ServerPlayer owner = server.getPlayerList().getPlayer(ownerId);
             if (owner != null) {
@@ -106,18 +90,6 @@ public final class PartyDisbandSettlementService {
         }
     }
 
-    private static void transferAllFunds(IBankAccount teamAccount, IBankAccount ownerAccount) {
-        for (MoneyValue value : teamAccount.getMoneyStorage().allValues()) {
-            if (value.isEmpty()) {
-                continue;
-            }
-            teamAccount.withdrawMoney(value);
-            dev.malik.lcftbhook.bank.BankTransactionLog.logWithdraw(teamAccount, "Party Disbanded", value);
-            ownerAccount.depositMoney(value);
-            dev.malik.lcftbhook.bank.BankTransactionLog.logDeposit(ownerAccount, "Party Disbanded", value);
-        }
-    }
-
     private static void notifyOwner(
             MinecraftServer server,
             UUID ownerId,
@@ -131,7 +103,7 @@ public final class PartyDisbandSettlementService {
             return;
         }
 
-        Component chunkRefunds = MoneyMessageUtil.formatValue(MoneyUtil.fromCopper(refundCopper));
+        Component chunkRefunds = Money.formatValue(refundCopper);
         owner.displayClientMessage(
                 Component.translatable(
                         "message.lc_ftb_hook.party_disband_settlement",

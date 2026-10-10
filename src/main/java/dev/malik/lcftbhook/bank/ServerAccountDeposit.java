@@ -1,63 +1,48 @@
 package dev.malik.lcftbhook.bank;
 
 import dev.malik.lcftbhook.LCFtbHook;
-import dev.malik.lcftbhook.util.MoneyUtil;
-import io.github.lightman314.lightmanscurrency.api.money.bank.IBankAccount;
-import io.github.lightman314.lightmanscurrency.api.money.value.MoneyValue;
+import dev.malik.lcftbhook.port.Backends;
+import dev.malik.lcftbhook.port.currency.CurrencyAccount;
+import net.minecraft.server.MinecraftServer;
 
 /**
  * Deposits an already-withdrawn "sink" payment (upkeep, chunk-claim price,
- * ...) into {@link ServerAccountHelper}'s account instead of letting the
- * money vanish, and logs it there the same way {@code UpkeepSettlementService}
- * already logs the withdrawal on the payer's own side.
+ * ...) into the active currency backend's server account instead of letting
+ * the money vanish.
  * <p>
- * Guards against LC's own overflow bug: decompiling {@code CoinValue.addValue}
- * showed it's plain {@code long + long} with no overflow check at all (unlike
- * {@code multiplyValue}, which does clamp to {@code Long.MAX_VALUE}) - a
- * deposit that pushed the balance past {@code Long.MAX_VALUE} copper would
- * silently wrap the account balance NEGATIVE. In practice that ceiling is
- * astronomically far away for any real server's upkeep/claim income, but
- * since it's a real landmine in LC itself, not just a theoretical one, this
- * checks for it before every deposit and simply skips the deposit (burning
- * the money, exactly like every sink did before this account existed) rather
- * than risk it.
+ * Guards against overflow before every deposit (Lightman's Currency's own
+ * {@code CoinValue.addValue} is plain {@code long + long} with no overflow
+ * check; Numismatics balances are {@code int}) and simply skips the deposit -
+ * burning the money, exactly like every sink did before this account existed -
+ * rather than risk a negative balance.
  */
 public final class ServerAccountDeposit {
     private ServerAccountDeposit() {
     }
 
-    public static void deposit(MoneyValue amount, String sourceLabel) {
-        if (amount.isEmpty()) {
+    public static void deposit(MinecraftServer server, long amount, String sourceLabel) {
+        if (amount <= 0) {
             return;
         }
-        IBankAccount account = ServerAccountHelper.get();
-        if (account == null) {
+        CurrencyAccount account;
+        try {
+            account = Backends.currency().serverAccount(server);
+        } catch (IllegalStateException unavailable) {
+            LCFtbHook.LOGGER.warn("Server account unavailable - burning {} ({})", amount, sourceLabel);
             return;
         }
-
-        long currentCopper = MoneyUtil.mainChainValue(account).getCoreValue();
-        long incomingCopper = amount.getCoreValue();
+        long current = account.balanceCopper();
         long newTotal;
         try {
-            newTotal = Math.addExact(currentCopper, incomingCopper);
+            newTotal = Math.addExact(current, amount);
         } catch (ArithmeticException overflow) {
-            LCFtbHook.LOGGER.warn(
-                    "Server account balance would overflow past Long.MAX_VALUE copper (currently {} + {} incoming) - "
-                            + "burning this payment instead of risking a negative balance.",
-                    currentCopper, incomingCopper
-            );
+            LCFtbHook.LOGGER.warn("Server account balance would overflow ({} + {}) - burning this payment instead.", current, amount);
             return;
         }
         if (newTotal < 0) {
-            // Belt and suspenders: Math.addExact already catches the normal
-            // overflow case, but guard the resulting sign too in case some
-            // future chain/denomination change lets a negative slip through
-            // some other path.
             LCFtbHook.LOGGER.warn("Server account deposit produced a negative total ({}) - burning this payment instead.", newTotal);
             return;
         }
-
-        account.depositMoney(amount);
-        BankTransactionLog.logDeposit(account, sourceLabel, amount);
+        account.deposit(amount, sourceLabel);
     }
 }

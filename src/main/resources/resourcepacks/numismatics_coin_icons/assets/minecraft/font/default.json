@@ -1,0 +1,58 @@
+{
+  "providers": [
+    {
+      "type": "bitmap",
+      "file": "numismatics:item/coin/spur.png",
+      "ascent": 7,
+      "height": 8,
+      "chars": [
+        "\ue400"
+      ]
+    },
+    {
+      "type": "bitmap",
+      "file": "numismatics:item/coin/bevel.png",
+      "ascent": 7,
+      "height": 8,
+      "chars": [
+        "\ue401"
+      ]
+    },
+    {
+      "type": "bitmap",
+      "file": "numismatics:item/coin/sprocket.png",
+      "ascent": 7,
+      "height": 8,
+      "chars": [
+        "\ue402"
+      ]
+    },
+    {
+      "type": "bitmap",
+      "file": "numismatics:item/coin/cog.png",
+      "ascent": 7,
+      "height": 8,
+      "chars": [
+        "\ue403"
+      ]
+    },
+    {
+      "type": "bitmap",
+      "file": "numismatics:item/coin/crown.png",
+      "ascent": 7,
+      "height": 8,
+      "chars": [
+        "\ue404"
+      ]
+    },
+    {
+      "type": "bitmap",
+      "file": "numismatics:item/coin/sun.png",
+      "ascent": 7,
+      "height": 8,
+      "chars": [
+        "\ue405"
+      ]
+    }
+  ]
+}

@@ -1,8 +1,9 @@
 package dev.malik.lcftbhook.service;
 
-import dev.malik.lcftbhook.config.LCFtbHookConfig;
+import dev.malik.lcftbhook.config.ProtectionPriceConfig;
 import dev.malik.lcftbhook.data.FtbHookSavedData;
 import dev.malik.lcftbhook.data.ProtectionProperty;
+import dev.malik.lcftbhook.port.Backends;
 import net.minecraft.server.MinecraftServer;
 
 import java.util.ArrayList;
@@ -25,7 +26,7 @@ public final class ProtectionDismantleOrder {
     }
 
     public static List<ProtectionProperty> propertyOrder() {
-        List<? extends String> configured = LCFtbHookConfig.SERVER.protectionDismantleOrder.get();
+        List<? extends String> configured = ProtectionPriceConfig.dismantleOrder(Backends.claim().protectionFields().id());
         List<ProtectionProperty> resolved = new ArrayList<>();
         for (String id : configured) {
             ProtectionProperty property = tryResolve(id);

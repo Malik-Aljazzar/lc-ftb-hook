@@ -1,0 +1,13 @@
+{
+  "required": false,
+  "package": "dev.malik.lcftbhook.mixin.opac",
+  "plugin": "dev.malik.lcftbhook.mixinplugin.BackendMixinPlugin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "ChunkProtectionAccessListMixin",
+    "OpacAreaClaimTaskMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 0
+  }
+}

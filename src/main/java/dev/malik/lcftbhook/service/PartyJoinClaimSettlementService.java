@@ -1,21 +1,18 @@
 package dev.malik.lcftbhook.service;
 
-import dev.ftb.mods.ftbchunks.api.ChunkTeamData;
-import dev.ftb.mods.ftbchunks.api.FTBChunksAPI;
-import dev.ftb.mods.ftbteams.api.Team;
 import dev.malik.lcftbhook.LCFtbHook;
 import dev.malik.lcftbhook.bank.ClaimBatchContext;
+import dev.malik.lcftbhook.bank.ClaimSettlementContext;
 import dev.malik.lcftbhook.data.FtbHookSavedData;
 import dev.malik.lcftbhook.service.ClaimPriceSync;
-import dev.malik.lcftbhook.teams.FtbTeamCatalog;
+import dev.malik.lcftbhook.port.Backends;
+import dev.malik.lcftbhook.port.claim.ClaimPort;
 import dev.malik.lcftbhook.service.WarStateSync;
-import dev.malik.lcftbhook.util.MoneyMessageUtil;
-import dev.malik.lcftbhook.util.MoneyUtil;
-import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -26,11 +23,9 @@ public final class PartyJoinClaimSettlementService {
     private PartyJoinClaimSettlementService() {
     }
 
-    public static void settle(MinecraftServer server, ServerPlayer player, Team previousTeam) {
-        if (player == null || previousTeam == null || previousTeam.isPartyTeam()) {
-            return;
-        }
-        if (!FTBChunksAPI.api().isManagerLoaded()) {
+    /** {@code previousTeamId}: the solo team the player just left by joining a party (solo team id == player UUID). */
+    public static void settle(MinecraftServer server, ServerPlayer player, UUID previousTeamId) {
+        if (player == null || previousTeamId == null || Backends.claim().isPartyTeam(server, previousTeamId)) {
             return;
         }
 
@@ -40,22 +35,22 @@ public final class PartyJoinClaimSettlementService {
         }
 
         try {
-            ChunkTeamData personalChunkData = FTBChunksAPI.api().getManager().getOrCreateData(previousTeam);
-            if (personalChunkData.getClaimedChunks().isEmpty() && personalChunkData.getForceLoadedChunks().isEmpty()) {
+            List<ClaimPort.ChunkKey> claimed = Backends.claim().claimedChunks(server, previousTeamId);
+            if (claimed.isEmpty() && Backends.claim().forceLoadedChunks(server, previousTeamId).isEmpty()) {
                 return;
             }
 
             FtbHookSavedData savedData = FtbHookSavedData.get(server);
-            FtbTeamCatalog.dissolveWarLinks(server, previousTeam.getTeamId());
-            savedData.setPendingState(previousTeam.getTeamId(), savedData.getPendingState(previousTeam.getTeamId()).cleared());
+            WarService.cleanupTeamWars(server, previousTeamId);
+            savedData.setPendingState(previousTeamId, savedData.getPendingState(previousTeamId).cleared());
 
-            CommandSourceStack source = server.createCommandSourceStack().withSuppressedOutput();
-            PendingChangeService.removeAllForceLoads(server, previousTeam);
+            PendingChangeService.removeAllForceLoads(server, previousTeamId);
 
-            int claimedBefore = personalChunkData.getClaimedChunks().size();
+            int claimedBefore = claimed.size();
             int[] unclaimed = {0};
             ClaimBatchContext.runPersonalRefundSettlement(playerId, () ->
-                    unclaimed[0] = ClaimSettlementHelper.unclaimAll(personalChunkData, source, false)
+                    ClaimSettlementContext.run(previousTeamId, claimedBefore, () ->
+                            unclaimed[0] = ClaimSettlementHelper.unclaimAll(server, claimed, false))
             );
 
             if (unclaimed[0] <= 0) {
@@ -63,7 +58,7 @@ public final class PartyJoinClaimSettlementService {
             }
 
             long refundCopper = ClaimSettlementHelper.refundForFullUnclaim(claimedBefore);
-            Component refund = MoneyMessageUtil.formatValue(MoneyUtil.fromCopper(refundCopper));
+            Component refund = dev.malik.lcftbhook.util.Money.formatValue(refundCopper);
             player.displayClientMessage(
                     Component.translatable("message.lc_ftb_hook.party_join_claim_refund", refund, unclaimed[0]),
                     false

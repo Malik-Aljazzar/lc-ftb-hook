@@ -1,7 +1,5 @@
 package dev.malik.lcftbhook.network;
 
-import dev.ftb.mods.ftbteams.api.FTBTeamsAPI;
-import dev.ftb.mods.ftbteams.api.Team;
 import dev.malik.lcftbhook.LCFtbHook;
 import dev.malik.lcftbhook.service.RegionService;
 import net.minecraft.network.FriendlyByteBuf;
@@ -45,14 +43,11 @@ public record ReorderRegionsPayload(List<UUID> newOrder) implements CustomPacket
             if (!(context.player() instanceof ServerPlayer player)) {
                 return;
             }
-            if (!FTBTeamsAPI.api().isManagerLoaded()) {
+            java.util.UUID teamId = dev.malik.lcftbhook.service.TeamCatalog.managedTeamOf(player.server, player.getUUID());
+            if (teamId == null) {
                 return;
             }
-            Team team = FTBTeamsAPI.api().getManager().getTeamForPlayer(player).orElse(null);
-            if (team == null || !team.getRankForPlayer(player.getUUID()).isMemberOrBetter()) {
-                return;
-            }
-            RegionService.reorderRegions(player.server, team, payload.newOrder);
+            RegionService.reorderRegions(player.server, teamId, payload.newOrder);
         });
     }
 }

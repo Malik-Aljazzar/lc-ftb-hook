@@ -1,11 +1,6 @@
 package dev.malik.lcftbhook.client;
 
-import dev.ftb.mods.ftblibrary.icon.Color4I;
-import dev.ftb.mods.ftblibrary.ui.Theme;
-import dev.malik.lcftbhook.bank.BulkInsufficientFundsClaimResult;
-import dev.malik.lcftbhook.bank.InsufficientFundsClaimResult;
-import dev.malik.lcftbhook.util.MoneyUtil;
-import net.minecraft.client.gui.GuiGraphics;
+import dev.malik.lcftbhook.bank.ClaimResultIds;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 
@@ -15,15 +10,11 @@ import java.util.Set;
 
 public final class ClientClaimPrices {
     public static final Set<String> LC_CLAIM_RESULT_IDS = Set.of(
-            InsufficientFundsClaimResult.RESULT_ID,
-            BulkInsufficientFundsClaimResult.RESULT_ID,
+            ClaimResultIds.INSUFFICIENT_FUNDS,
+            ClaimResultIds.INSUFFICIENT_FUNDS_BULK,
             "message.lc_ftb_hook.claim_rank_denied"
     );
 
-    private static final Color4I LABEL_COLOR = Color4I.rgb(0xA0A0A0);
-    private static final Color4I SEPARATOR_COLOR = Color4I.rgb(0x606060);
-    private static final Color4I VALUE_COLOR = Color4I.rgb(0xFFFFFF);
-    private static final Color4I PERIOD_COLOR = Color4I.rgb(0x909090);
 
     private static long claimPrice = -1L;
     private static long forceLoadUpkeepPrice = -1L;
@@ -33,12 +24,7 @@ public final class ClientClaimPrices {
     private static long secondsUntilNextUpkeepSyncedAtMillis;
     private static int freeChunks;
     private static int claimedChunks;
-    private static long mobGriefProtectionPrice = -1L;
-    private static long explosionProtectionPrice = -1L;
-    private static long pvpDisablePrice = -1L;
-    private static long blockInteractProtectionPrice = -1L;
-    private static long blockEditProtectionPrice = -1L;
-    private static long entityInteractProtectionPrice = -1L;
+    private static boolean protectionFieldsSynced;
     private static boolean balanceSynced;
     private static boolean balanceEmpty = true;
     @Nullable
@@ -52,6 +38,12 @@ public final class ClientClaimPrices {
     private static String countryBalanceText;
     private static int lastUpdateTotalChunks = 1;
     private static Map<String, Integer> lastProblems = Map.of();
+    // Defaults true so menu entries aren't briefly hidden before the first
+    // sync lands - purely a display timing nicety, never the actual
+    // permission boundary (the server independently re-checks
+    // BankAccountHelper.canPurchaseForTeam for every claim/unclaim/
+    // force-load/unload request regardless of what this says).
+    private static boolean canManageClaims = true;
 
     private ClientClaimPrices() {
     }
@@ -72,12 +64,8 @@ public final class ClientClaimPrices {
             boolean countryBalanceAvailable,
             boolean emptyCountryBalance,
             String countryBalance,
-            long mobGrief,
-            long explosion,
-            long pvpDisable,
-            long blockInteract,
-            long blockEdit,
-            long entityInteract
+            java.util.List<dev.malik.lcftbhook.data.ProtectionProperty> protectionFields,
+            boolean canManageClaimsValue
     ) {
         claimPrice = claim;
         forceLoadUpkeepPrice = forceLoadUpkeep;
@@ -95,12 +83,14 @@ public final class ClientClaimPrices {
         hasCountryBalance = countryBalanceAvailable;
         countryBalanceEmpty = emptyCountryBalance;
         countryBalanceText = countryBalance;
-        mobGriefProtectionPrice = mobGrief;
-        explosionProtectionPrice = explosion;
-        pvpDisablePrice = pvpDisable;
-        blockInteractProtectionPrice = blockInteract;
-        blockEditProtectionPrice = blockEdit;
-        entityInteractProtectionPrice = entityInteract;
+        dev.malik.lcftbhook.data.ProtectionCatalog.setClientFields(protectionFields);
+        protectionFieldsSynced = true;
+        canManageClaims = canManageClaimsValue;
+    }
+
+    /** Whether the local player currently has spending access on their team's account (mirrors the team's own configured Lightman's Currency access level) - claim/unclaim/force-load/unload all require this server-side. */
+    public static boolean canManageClaims() {
+        return canManageClaims;
     }
 
     public static int upkeepPeriodMinutes() {
@@ -126,40 +116,23 @@ public final class ClientClaimPrices {
         return (int) Math.max(0L, secondsUntilNextUpkeepAtSync - elapsedSeconds);
     }
 
+    /** The synced price of a protection of the server's active claim backend, null if unknown. */
     @Nullable
     public static Long protectionPrice(String propertyKey) {
-        return switch (propertyKey) {
-            case "allow_mob_griefing" -> mobGriefProtectionPrice >= 0L ? mobGriefProtectionPrice : null;
-            case "allow_explosions" -> explosionProtectionPrice >= 0L ? explosionProtectionPrice : null;
-            case "allow_pvp" -> pvpDisablePrice >= 0L ? pvpDisablePrice : null;
-            case "block_interact_mode" -> blockInteractProtectionPrice >= 0L ? blockInteractProtectionPrice : null;
-            case "block_edit_mode" -> blockEditProtectionPrice >= 0L ? blockEditProtectionPrice : null;
-            case "entity_interact_mode" -> entityInteractProtectionPrice >= 0L ? entityInteractProtectionPrice : null;
-            default -> null;
-        };
-    }
-
-    @Nullable
-    public static Long defaultProtectionPrice(String propertyKey) {
-        return switch (propertyKey) {
-            case "allow_mob_griefing" -> 10L;
-            case "allow_explosions" -> 10L;
-            case "allow_pvp" -> 5L;
-            case "block_interact_mode" -> 15L;
-            case "block_edit_mode" -> 15L;
-            case "entity_interact_mode" -> 15L;
-            default -> null;
-        };
+        for (dev.malik.lcftbhook.data.ProtectionProperty property : dev.malik.lcftbhook.data.ProtectionProperty.values()) {
+            if (property.id().equals(propertyKey)) {
+                return property.configPrice();
+            }
+        }
+        return null;
     }
 
     public static boolean protectionPricesSynced() {
-        return mobGriefProtectionPrice >= 0L
-                && explosionProtectionPrice >= 0L
-                && pvpDisablePrice >= 0L
-                && blockInteractProtectionPrice >= 0L
-                && blockEditProtectionPrice >= 0L
-                && entityInteractProtectionPrice >= 0L;
+        return protectionFieldsSynced;
     }
+
+    private static long lastRefreshRequestMillis;
+    private static final long REFRESH_REQUEST_INTERVAL_MILLIS = 3000L;
 
     /**
      * @param showCtrlHint whether to append the "Hold Ctrl to see more" tip -
@@ -169,24 +142,48 @@ public final class ClientClaimPrices {
      *                      it should pass false there.
      */
     public static java.util.List<Component> moneyLines(boolean showCtrlHint) {
+        // This is called every render frame by an always-visible panel
+        // (XaeroClaimInfoPanel) as well as whenever the FTB Chunks claim
+        // screen is open, but the balance/price fields only ever change when
+        // a SyncClaimPricesPayload arrives, which nothing here triggers on
+        // its own - a balance change from outside this mod's own claim/
+        // force-load/war actions (e.g. depositing into a Lightman's Currency
+        // terminal, or upkeep silently withdrawing its payment) never
+        // refreshes what's shown here otherwise, since none of THIS mod's
+        // own resync triggers fire for those. Polling the server for a fresh
+        // sync every few seconds while this panel is actually being drawn
+        // keeps the displayed balance from going stale indefinitely, without
+        // spamming a request every single frame.
+        long now = System.currentTimeMillis();
+        if (now - lastRefreshRequestMillis >= REFRESH_REQUEST_INTERVAL_MILLIS) {
+            lastRefreshRequestMillis = now;
+            net.neoforged.neoforge.network.PacketDistributor.sendToServer(new dev.malik.lcftbhook.network.RequestClaimPricesPayload());
+        }
         if (!isSynced()) {
             return java.util.List.of();
         }
         java.util.List<Component> lines = new java.util.ArrayList<>();
-        lines.add(styledLabel("claim").append(" ").append(styledValue(formatEffectiveClaimPrice())));
         lines.add(styledLabel("private_balance").append(" ").append(styledValue(formatPrivateBalance())));
-        // Only shown for officers/the owner of an actual party - a solo
-        // player's "team" is just their own personal account, which is
-        // already covered by the private balance line above, so a second
-        // (identical) line would be pointless there.
-        if (hasCountryBalance) {
-            lines.add(styledLabel("country_balance").append(" ").append(styledValue(formatCountryBalance())));
+        // Claim price, the country account balance, and the force-load
+        // upkeep price/period are all officers/owner concerns (only they can
+        // actually claim, force-load, or spend from the team account - see
+        // BankAccountHelper/RegionService's own rank checks) - a plain
+        // member only ever needs to see their own private balance here.
+        if (dev.malik.lcftbhook.client.ClientTeamRank.isOfficerOrBetter()) {
+            lines.add(styledLabel("claim").append(" ").append(styledValue(formatEffectiveClaimPrice())));
+            // Only shown for officers/the owner of an actual party - a solo
+            // player's "team" is just their own personal account, which is
+            // already covered by the private balance line above, so a second
+            // (identical) line would be pointless there.
+            if (hasCountryBalance) {
+                lines.add(styledLabel("country_balance").append(" ").append(styledValue(formatCountryBalance())));
+            }
+            // Own line for the label, since "Force-load upkeep <price> per <period>"
+            // together is wider than the panel and was spilling past its edge.
+            lines.add(styledLabel("upkeep"));
+            lines.add(styledValue(formatPrice(forceLoadUpkeepPrice))
+                    .append(" ").append(Component.literal(formatUpkeepPeriod(upkeepPeriodMinutes).getString()).withStyle(net.minecraft.ChatFormatting.GRAY)));
         }
-        // Own line for the label, since "Force-load upkeep <price> per <period>"
-        // together is wider than the panel and was spilling past its edge.
-        lines.add(styledLabel("upkeep"));
-        lines.add(styledValue(formatPrice(forceLoadUpkeepPrice))
-                .append(" ").append(Component.literal(formatUpkeepPeriod(upkeepPeriodMinutes).getString()).withStyle(net.minecraft.ChatFormatting.GRAY)));
         if (showCtrlHint) {
             // Two lines for the same reason as the upkeep split above - the
             // full hint text is wider than the panel.
@@ -218,38 +215,17 @@ public final class ClientClaimPrices {
         return LC_CLAIM_RESULT_IDS.contains(resultId);
     }
 
-    public static void renderBottomPanel(GuiGraphics graphics, Theme theme, int x, int y) {
-        int lineHeight = theme.getFontHeight() + 2;
-        int cursor = x;
-
-        cursor = drawSegment(theme, graphics, cursor, y, label("claim"), LABEL_COLOR);
-        cursor = drawSegment(theme, graphics, cursor, y, space(), LABEL_COLOR);
-        cursor = drawSegment(theme, graphics, cursor, y, formatEffectiveClaimPrice(), VALUE_COLOR);
-        cursor = drawSegment(theme, graphics, cursor, y, separator(), SEPARATOR_COLOR);
-        cursor = drawSegment(theme, graphics, cursor, y, label("balance"), LABEL_COLOR);
-        cursor = drawSegment(theme, graphics, cursor, y, space(), LABEL_COLOR);
-        drawSegment(theme, graphics, cursor, y, formatBalance(), VALUE_COLOR);
-
-        int upkeepY = y + lineHeight;
-        cursor = x;
-        cursor = drawSegment(theme, graphics, cursor, upkeepY, label("upkeep"), LABEL_COLOR);
-        cursor = drawSegment(theme, graphics, cursor, upkeepY, space(), LABEL_COLOR);
-        cursor = drawSegment(theme, graphics, cursor, upkeepY, formatPrice(forceLoadUpkeepPrice), VALUE_COLOR);
-        cursor = drawSegment(theme, graphics, cursor, upkeepY, space(), PERIOD_COLOR);
-        drawSegment(theme, graphics, cursor, upkeepY, formatUpkeepPeriod(upkeepPeriodMinutes), PERIOD_COLOR);
-    }
-
     public static void noteChunkUpdate(int totalChunks, int changedChunks, Map<String, Integer> problems) {
         lastUpdateTotalChunks = totalChunks;
         lastProblems = problems;
     }
 
     public static MutableComponent claimProblemLine(String resultId) {
-        if (BulkInsufficientFundsClaimResult.RESULT_ID.equals(resultId)) {
+        if (ClaimResultIds.INSUFFICIENT_FUNDS_BULK.equals(resultId)) {
             int count = lastProblems.getOrDefault(resultId, lastUpdateTotalChunks);
             return insufficientFundsBulkMessage(count);
         }
-        if (InsufficientFundsClaimResult.RESULT_ID.equals(resultId)) {
+        if (ClaimResultIds.INSUFFICIENT_FUNDS.equals(resultId)) {
             int count = lastProblems.getOrDefault(resultId, 1);
             if (count > 1) {
                 return Component.translatable(
@@ -266,7 +242,7 @@ public final class ClientClaimPrices {
 
     public static MutableComponent insufficientFundsMessage() {
         return Component.translatable(
-                InsufficientFundsClaimResult.RESULT_ID,
+                ClaimResultIds.INSUFFICIENT_FUNDS,
                 formatEffectiveClaimPrice(),
                 formatBalance()
         );
@@ -275,7 +251,7 @@ public final class ClientClaimPrices {
     public static MutableComponent insufficientFundsBulkMessage(int chunkCount) {
         long unitPrice = nextClaimUnitPrice();
         return Component.translatable(
-                BulkInsufficientFundsClaimResult.RESULT_ID,
+                ClaimResultIds.INSUFFICIENT_FUNDS_BULK,
                 formatPrice(unitPrice * Math.max(chunkCount, 1)),
                 chunkCount,
                 formatBalance()
@@ -290,56 +266,36 @@ public final class ClientClaimPrices {
         return formatPrice(nextClaimUnitPrice());
     }
 
-    private static int drawSegment(
-            Theme theme,
-            GuiGraphics graphics,
-            int x,
-            int y,
-            Component text,
-            Color4I color
-    ) {
-        theme.drawString(graphics, text, x, y, color, 0);
-        return x + theme.getStringWidth(text);
-    }
-
     private static Component label(String key) {
         return Component.translatable("gui.lc_ftb_hook.label." + key);
-    }
-
-    private static Component separator() {
-        return Component.translatable("gui.lc_ftb_hook.separator");
-    }
-
-    private static Component space() {
-        return Component.literal(" ");
     }
 
     private static Component formatBalance() {
         if (balanceEmpty) {
             return Component.translatable("message.lc_ftb_hook.balance_empty");
         }
-        return Component.literal(balanceText == null ? "" : balanceText);
+        return dev.malik.lcftbhook.util.IconText.of(balanceText == null ? "" : balanceText);
     }
 
     private static Component formatPrivateBalance() {
         if (privateBalanceEmpty) {
             return Component.translatable("message.lc_ftb_hook.balance_empty");
         }
-        return Component.literal(privateBalanceText == null ? "" : privateBalanceText);
+        return dev.malik.lcftbhook.util.IconText.of(privateBalanceText == null ? "" : privateBalanceText);
     }
 
     private static Component formatCountryBalance() {
         if (countryBalanceEmpty) {
             return Component.translatable("message.lc_ftb_hook.balance_empty");
         }
-        return Component.literal(countryBalanceText == null ? "" : countryBalanceText);
+        return dev.malik.lcftbhook.util.IconText.of(countryBalanceText == null ? "" : countryBalanceText);
     }
 
     private static Component formatPrice(long amount) {
         if (amount <= 0L) {
             return Component.translatable("gui.lc_ftb_hook.price_free");
         }
-        return MoneyUtil.fromCopper(amount).getText();
+        return dev.malik.lcftbhook.util.Money.format(amount);
     }
 
     private static Component formatUpkeepPeriod(int minutes) {

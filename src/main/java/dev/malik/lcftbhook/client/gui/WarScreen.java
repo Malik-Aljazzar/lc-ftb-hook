@@ -1,745 +1,172 @@
 package dev.malik.lcftbhook.client.gui;
 
-import dev.ftb.mods.ftblibrary.icon.Color4I;
-import dev.ftb.mods.ftblibrary.icon.Icons;
-import dev.ftb.mods.ftblibrary.ui.BaseScreen;
-import dev.ftb.mods.ftblibrary.ui.Button;
-import dev.ftb.mods.ftblibrary.ui.NordButton;
-import dev.ftb.mods.ftblibrary.ui.Panel;
-import dev.ftb.mods.ftblibrary.ui.PanelScrollBar;
-import dev.ftb.mods.ftblibrary.ui.SimpleButton;
-import dev.ftb.mods.ftblibrary.ui.TextBox;
-import dev.ftb.mods.ftblibrary.ui.Theme;
-import dev.ftb.mods.ftblibrary.ui.Widget;
-import dev.ftb.mods.ftblibrary.ui.misc.NordColors;
-import dev.ftb.mods.ftblibrary.util.TooltipList;
-import dev.ftb.mods.ftblibrary.util.client.ClientUtils;
-import dev.ftb.mods.ftbteams.client.gui.MyTeamScreen;
 import dev.malik.lcftbhook.client.ClientWarState;
-import dev.malik.lcftbhook.client.WarIcons;
+import dev.malik.lcftbhook.client.gui.WarTooltips.Section;
 import dev.malik.lcftbhook.network.RequestWarStatePayload;
 import dev.malik.lcftbhook.network.ToggleWarPayload;
-import dev.malik.lcftbhook.network.WarEntryStatus;
 import dev.malik.lcftbhook.network.WarTeamEntry;
-import dev.malik.lcftbhook.service.ProtectionPriceDisplay;
-import dev.malik.lcftbhook.util.MoneyMessageUtil;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.neoforged.neoforge.network.PacketDistributor;
 
-import java.util.ArrayList;
+import javax.annotation.Nullable;
 import java.util.Comparator;
+import java.util.EnumMap;
 import java.util.List;
 import java.util.Locale;
-import java.util.UUID;
+import java.util.Map;
 import java.util.function.Supplier;
 
-public class WarScreen extends BaseScreen {
-    private static final int HEADER_BUTTON_SIZE = 16;
-    private static final int HEADER_HEIGHT = 22;
-    private static final int ROW_HEIGHT = 22;
-    private static final int SECTION_HEADER_HEIGHT = 20;
-    private static final int EMPTY_ROW_HEIGHT = 14;
-    private static final int ROW_GAP = 2;
-    private static final int ROW_PAD = 6;
-    private static final int ROW_BUTTON_GAP = 4;
-    private static final int FILTER_BOX_HEIGHT = 16;
-    private static final int FILTER_BOX_MIN_WIDTH = 96;
-    private static final int FILTER_BOX_MAX_WIDTH = 160;
-    private static final int SECTION_HEADER_GAP = 2;
-    private static final int SECTION_GAP = 6;
-    private static final int SCROLLBAR_WIDTH = 8;
-    private static final int CONTENT_PAD = 8;
-    private static final int MIN_SECTION_LIST_HEIGHT = 28;
+/**
+ * Wars: incoming, outgoing and possible targets, each searchable. Clicking a
+ * row's action (right side) declares/ends a war; clicking a pending row
+ * cancels the queued change. Hover a row for its costs and vulnerabilities.
+ */
+public class WarScreen extends LcScreen {
+    private static final int ROW_HEIGHT = 20;
+    private static final int SECTION_HEADER = 18;
+    private static final int ACTION_WIDTH = 70;
 
-    private final MyTeamScreen parent;
-    private SimpleButton backButton;
-    private SimpleButton infoButton;
-    private WarSection incomingSection;
-    private WarSection outgoingSection;
-    private WarSection declareSection;
+    private final Map<Section, String> filters = new EnumMap<>(Section.class);
+    private final Map<Section, Integer> sectionTops = new EnumMap<>(Section.class);
 
-    public WarScreen(MyTeamScreen parent) {
-        this.parent = parent;
-    }
-
-    public static void refreshIfOpen() {
-        WarScreen screen = ClientUtils.getCurrentGuiAs(WarScreen.class);
-        if (screen != null) {
-            screen.rebuildList();
-        }
-    }
-
-    @Override
-    public boolean onInit() {
-        setWidth(getScreen().getGuiScaledWidth() * 3 / 5);
-        setHeight(getScreen().getGuiScaledHeight() * 3 / 5);
+    public WarScreen(@Nullable Screen parent) {
+        super(Component.translatable("gui.lc_ftb_hook.war.title"), parent);
         PacketDistributor.sendToServer(new RequestWarStatePayload());
-        return true;
     }
 
     @Override
-    public void addWidgets() {
-        backButton = new SimpleButton(this, Component.translatable("gui.back"), Icons.BACK, (button, mouseButton) -> parent.openGui());
-        add(backButton);
-        infoButton = new SimpleButton(this, Component.empty(), Icons.INFO, (button, mouseButton) -> {}) {
-            @Override
-            public void addMouseOverText(TooltipList list) {
-                addWarCostTooltip(list);
-            }
-
-            @Override
-            public void playClickSound() {
-            }
-        };
-        add(infoButton);
-
-        incomingSection = new WarSection(
-                Component.translatable("gui.lc_ftb_hook.war.incoming_heading"),
-                ClientWarState::incoming,
-                SectionMode.INCOMING,
-                Component.translatable("gui.lc_ftb_hook.war.empty_incoming").withStyle(ChatFormatting.GRAY, ChatFormatting.ITALIC)
-        );
-        outgoingSection = new WarSection(
-                Component.translatable("gui.lc_ftb_hook.war.outgoing_heading"),
-                ClientWarState::outgoing,
-                SectionMode.OUTGOING,
-                Component.translatable("gui.lc_ftb_hook.war.empty_outgoing").withStyle(ChatFormatting.GRAY, ChatFormatting.ITALIC)
-        );
-        declareSection = new WarSection(
-                Component.translatable("gui.lc_ftb_hook.war.declare_heading"),
-                ClientWarState::availableTargets,
-                SectionMode.DECLARE,
-                Component.translatable("gui.lc_ftb_hook.war.empty_targets").withStyle(ChatFormatting.GRAY, ChatFormatting.ITALIC)
-        );
-
-        incomingSection.addWidgets();
-        outgoingSection.addWidgets();
-        declareSection.addWidgets();
+    protected int preferredWidth(int screenWidth) {
+        return Math.max(300, screenWidth * 3 / 5);
     }
 
     @Override
-    public void alignWidgets() {
-        backButton.setPosAndSize(5, 5, HEADER_BUTTON_SIZE, HEADER_BUTTON_SIZE);
-        infoButton.setPosAndSize(5 + HEADER_BUTTON_SIZE + 4, 5, HEADER_BUTTON_SIZE, HEADER_BUTTON_SIZE);
+    protected int preferredHeight(int screenHeight) {
+        return screenHeight * 4 / 5;
+    }
 
-        int contentTop = HEADER_HEIGHT + 6;
-        int contentHeight = height - contentTop - CONTENT_PAD;
-        int sectionWidth = width - CONTENT_PAD * 2;
-        int sectionHeight = (contentHeight - SECTION_GAP * 2) / 3;
-
+    @Override
+    protected void initContent() {
+        hoverArea(left + boxWidth - 22, top + 3, 18, 16, WarTooltips::costSummary);
+        int contentTop = top + HEADER_HEIGHT + 4;
+        int sectionHeight = (top + boxHeight - PAD - contentTop) / 3;
         int y = contentTop;
-        incomingSection.setBounds(CONTENT_PAD, y, sectionWidth, sectionHeight);
-        y += sectionHeight + SECTION_GAP;
-        outgoingSection.setBounds(CONTENT_PAD, y, sectionWidth, sectionHeight);
-        y += sectionHeight + SECTION_GAP;
-        declareSection.setBounds(CONTENT_PAD, y, sectionWidth, contentHeight - (y - contentTop));
-    }
-
-    private void rebuildList() {
-        if (incomingSection != null) {
-            incomingSection.refreshList();
-        }
-        if (outgoingSection != null) {
-            outgoingSection.refreshList();
-        }
-        if (declareSection != null) {
-            declareSection.refreshList();
-        }
-        alignWidgets();
-    }
-
-    @Override
-    public void drawBackground(GuiGraphics graphics, Theme theme, int x, int y, int w, int h) {
-        super.drawBackground(graphics, theme, x, y, w, h);
-        NordColors.POLAR_NIGHT_0.draw(graphics, x + 4, y + HEADER_HEIGHT + 2, w - 8, h - HEADER_HEIGHT - 6);
-        NordColors.POLAR_NIGHT_2.draw(graphics, x + 4, y + HEADER_HEIGHT + 2, w - 8, 1);
-    }
-
-    @Override
-    public void drawForeground(GuiGraphics graphics, Theme theme, int x, int y, int w, int h) {
-        super.drawForeground(graphics, theme, x, y, w, h);
-        theme.drawString(
-                graphics,
-                Component.translatable("gui.lc_ftb_hook.war.title"),
-                x + w / 2,
-                y + 7,
-                NordColors.SNOW_STORM_0,
-                Theme.CENTERED
-        );
-    }
-
-    private enum SectionMode {
-        INCOMING,
-        OUTGOING,
-        DECLARE
-    }
-
-    private static void addWarCostTooltip(TooltipList list) {
-        list.add(Component.translatable("gui.lc_ftb_hook.war.cost_tooltip.title").withStyle(ChatFormatting.GOLD));
-        list.blankLine();
-        list.add(Component.translatable(
-                "gui.lc_ftb_hook.war.cost_tooltip.base",
-                MoneyMessageUtil.formatPrice(ClientWarState.baseUpkeepCopper())
-        ));
-        if (ClientWarState.incomingWarCopper() > 0) {
-            list.add(Component.translatable(
-                    "gui.lc_ftb_hook.war.cost_tooltip.incoming",
-                    MoneyMessageUtil.formatPrice(ClientWarState.incomingWarCopper())
-            ));
-        }
-        if (ClientWarState.outgoingWarCopper() > 0) {
-            list.add(Component.translatable(
-                    "gui.lc_ftb_hook.war.cost_tooltip.outgoing",
-                    MoneyMessageUtil.formatPrice(ClientWarState.outgoingWarCopper())
-            ));
-        }
-        list.blankLine();
-        list.add(Component.translatable(
-                "gui.lc_ftb_hook.war.cost_tooltip.total",
-                MoneyMessageUtil.formatPrice(
-                        ClientWarState.baseUpkeepCopper() + ClientWarState.totalWarCopper()
-                ),
-                ProtectionPriceDisplay.upkeepPeriodLabel()
-        ).withStyle(ChatFormatting.AQUA));
-        list.blankLine();
-        list.add(Component.translatable(
-                "gui.lc_ftb_hook.war.cost_tooltip.multiplier",
-                formatMultiplier(ClientWarState.warCostMultiplier())
-        ).withStyle(ChatFormatting.GRAY));
-    }
-
-    private static String formatMultiplier(double multiplier) {
-        if (Math.rint(multiplier) == multiplier) {
-            return String.valueOf((long) multiplier);
-        }
-        return String.valueOf(multiplier);
-    }
-
-    private static Component formatEntryCost(long copper) {
-        if (copper <= 0) {
-            return MoneyMessageUtil.formatPrice(copper);
-        }
-        return Component.translatable(
-                "gui.lc_ftb_hook.war.entry_cost",
-                MoneyMessageUtil.formatPrice(copper),
-                ProtectionPriceDisplay.upkeepPeriodLabel()
-        ).withStyle(ChatFormatting.GOLD);
-    }
-
-    private static void addEntryTooltip(TooltipList list, WarTeamEntry entry, SectionMode mode) {
-        Component period = ProtectionPriceDisplay.upkeepPeriodLabel();
-
-        if (entry.status() == WarEntryStatus.PENDING_DECLARE && mode == SectionMode.DECLARE) {
-            list.add(Component.translatable("gui.lc_ftb_hook.war.entry_tooltip.pending_declare")
-                    .withStyle(ChatFormatting.GOLD));
-            addEntryCostDetails(list, entry, period);
-            if (entry.opponentPendingDeclareOnViewer()) {
-                list.blankLine();
-                list.add(Component.translatable("gui.lc_ftb_hook.war.entry_tooltip.opponent_pending_declare")
-                        .withStyle(ChatFormatting.YELLOW));
-            }
-            if (ClientWarState.canManageWar()) {
-                list.blankLine();
-                list.add(Component.translatable("gui.lc_ftb_hook.war.entry_tooltip.click_to_cancel")
-                        .withStyle(ChatFormatting.GRAY));
-            }
-            return;
-        }
-
-        if (entry.status() == WarEntryStatus.PENDING_DECLARE && mode == SectionMode.INCOMING) {
-            list.add(Component.translatable("gui.lc_ftb_hook.war.entry_tooltip.pending_incoming")
-                    .withStyle(ChatFormatting.GOLD));
-            addEntryCostDetails(list, entry, period);
-            return;
-        }
-
-        if (entry.status() == WarEntryStatus.PENDING_END && mode == SectionMode.OUTGOING) {
-            list.add(Component.translatable("gui.lc_ftb_hook.war.entry_tooltip.pending_end")
-                    .withStyle(ChatFormatting.GOLD));
-            addEntryCostDetails(list, entry, period);
-            addWarVulnerabilityTooltip(list, entry);
-            if (ClientWarState.canManageWar()) {
-                list.blankLine();
-                list.add(Component.translatable("gui.lc_ftb_hook.war.entry_tooltip.click_to_cancel")
-                        .withStyle(ChatFormatting.GRAY));
-            }
-            return;
-        }
-
-        addEntryCostDetails(list, entry, period);
-        if (mode == SectionMode.DECLARE && entry.opponentPendingDeclareOnViewer()) {
-            list.blankLine();
-            list.add(Component.translatable("gui.lc_ftb_hook.war.entry_tooltip.opponent_pending_declare")
-                    .withStyle(ChatFormatting.YELLOW));
-        }
-        if (mode == SectionMode.OUTGOING) {
-            addWarVulnerabilityTooltip(list, entry);
+        for (Section section : Section.values()) {
+            initSection(section, y, sectionHeight - 4);
+            y += sectionHeight;
         }
     }
 
-    private static void addWarVulnerabilityTooltip(TooltipList list, WarTeamEntry entry) {
-        if (!entry.hasWarVulnerability()) {
-            return;
-        }
-        list.blankLine();
-        list.add(Component.translatable("gui.lc_ftb_hook.war.entry_tooltip.vulnerabilities_heading")
-                .withStyle(ChatFormatting.GOLD));
-        if (!entry.blockEditProtected()) {
-            list.add(Component.translatable("gui.lc_ftb_hook.war.entry_tooltip.missing_block_edit")
-                    .withStyle(ChatFormatting.YELLOW));
-        }
-        if (!entry.explosionProtected()) {
-            list.add(Component.translatable("gui.lc_ftb_hook.war.entry_tooltip.missing_explosions")
-                    .withStyle(ChatFormatting.YELLOW));
-        }
-        if (!entry.pvpProtected()) {
-            list.add(Component.translatable("gui.lc_ftb_hook.war.entry_tooltip.missing_pvp")
-                    .withStyle(ChatFormatting.YELLOW));
-        }
+    private void initSection(Section section, int y, int height) {
+        sectionTops.put(section, y);
+        int filterWidth = Math.min(160, Math.max(96, boxWidth / 3));
+        EditBox filter = addRenderableWidget(new EditBox(font, left + boxWidth - PAD - filterWidth, y + 1, filterWidth, 14, Component.empty()));
+        filter.setHint(Component.translatable("gui.lc_ftb_hook.war.filter_ghost"));
+        filter.setValue(filters.getOrDefault(section, ""));
+        filter.setResponder(text -> filters.put(section, text));
+        int listTop = y + SECTION_HEADER;
+        addList(new RowListWidget<>(left + PAD, listTop, boxWidth - PAD * 2, height - SECTION_HEADER,
+                () -> entries(section), entry -> ROW_HEIGHT,
+                (graphics, entry, x, rowY, w, h, hovered) -> renderRow(graphics, entry, section, x, rowY, w, h, hovered))
+                .onClick((entry, localX, localY) -> click(entry, section, localX))
+                .tooltip((entry, localX, localY) -> WarTooltips.entry(entry, section)));
     }
 
-    private static void addEntryCostDetails(TooltipList list, WarTeamEntry entry, Component period) {
-        list.add(Component.translatable(
-                "gui.lc_ftb_hook.war.entry_tooltip.base",
-                MoneyMessageUtil.formatPrice(entry.targetBaseUpkeepCopper()),
-                period
-        ));
-        if (entry.warCostCopper() <= 0) {
-            list.add(Component.translatable("gui.lc_ftb_hook.war.entry_tooltip.no_claims_yet")
-                    .withStyle(ChatFormatting.GRAY));
-            return;
-        }
-        list.add(Component.translatable(
-                "gui.lc_ftb_hook.war.entry_tooltip.cost",
-                MoneyMessageUtil.formatPrice(entry.warCostCopper()),
-                period
-        ).withStyle(ChatFormatting.GOLD));
-    }
-
-    private static List<WarTeamEntry> filterEntries(List<WarTeamEntry> entries, String query) {
-        if (entries.isEmpty()) {
+    private List<WarTeamEntry> entries(Section section) {
+        if (section == Section.DECLARE && !ClientWarState.canManageWar()) {
             return List.of();
         }
-
-        String normalized = query == null ? "" : query.trim().toLowerCase(Locale.ROOT);
-        List<WarTeamEntry> matches = new ArrayList<>();
-        for (WarTeamEntry entry : entries) {
-            if (normalized.isEmpty() || entry.displayName().toLowerCase(Locale.ROOT).contains(normalized)) {
-                matches.add(entry);
-            }
-        }
-
-        matches.sort(Comparator
-                .comparingInt((WarTeamEntry entry) -> searchRank(entry.displayName(), normalized))
-                .thenComparing(entry -> entry.displayName(), String.CASE_INSENSITIVE_ORDER));
-        return matches;
+        Supplier<List<WarTeamEntry>> source = switch (section) {
+            case INCOMING -> ClientWarState::incoming;
+            case OUTGOING -> ClientWarState::outgoing;
+            case DECLARE -> ClientWarState::availableTargets;
+        };
+        String query = filters.getOrDefault(section, "").trim().toLowerCase(Locale.ROOT);
+        return source.get().stream()
+                .filter(entry -> query.isEmpty() || entry.displayName().toLowerCase(Locale.ROOT).contains(query))
+                .sorted(Comparator.comparingInt((WarTeamEntry entry) -> searchRank(entry.displayName(), query))
+                        .thenComparing(WarTeamEntry::displayName, String.CASE_INSENSITIVE_ORDER))
+                .toList();
     }
 
     private static int searchRank(String name, String query) {
-        if (query.isEmpty()) {
-            return 0;
-        }
         String lower = name.toLowerCase(Locale.ROOT);
-        if (lower.equals(query)) {
-            return 0;
-        }
-        if (lower.startsWith(query)) {
-            return 1;
-        }
-        return 2;
+        return query.isEmpty() || lower.equals(query) ? 0 : lower.startsWith(query) ? 1 : 2;
     }
 
-    private final class WarSection {
-        private final Component title;
-        private final Supplier<List<WarTeamEntry>> sourceEntries;
-        private final SectionMode mode;
-        private final Component emptyMessage;
-
-        private SectionHeaderBar headerBar;
-        private WarEntryListPanel listPanel;
-        private PanelScrollBar scrollBar;
-
-        private WarSection(
-                Component title,
-                Supplier<List<WarTeamEntry>> sourceEntries,
-                SectionMode mode,
-                Component emptyMessage
-        ) {
-            this.title = title;
-            this.sourceEntries = sourceEntries;
-            this.mode = mode;
-            this.emptyMessage = emptyMessage;
+    private void renderRow(GuiGraphics graphics, WarTeamEntry entry, Section section, int x, int y, int w, int h, boolean hovered) {
+        boolean vulnerable = section == Section.OUTGOING && entry.hasWarVulnerability();
+        graphics.fill(x, y, x + w, y + h, hovered ? COLOR_ROW_HOVER : COLOR_ROW);
+        if (vulnerable) {
+            graphics.fill(x, y, x + 2, y + h, 0xC8EBCB8B);
         }
-
-        void addWidgets() {
-            headerBar = new SectionHeaderBar(WarScreen.this, title, this::refreshList);
-            listPanel = new WarEntryListPanel(WarScreen.this, this::filteredEntries, mode, emptyMessage);
-            scrollBar = new WarScrollBar(WarScreen.this, listPanel);
-
-            WarScreen.this.add(headerBar);
-            WarScreen.this.add(listPanel);
-            WarScreen.this.add(scrollBar);
+        int right = x + w - 4;
+        Component action = actionLabel(entry, section);
+        if (action != null) {
+            graphics.fill(right - ACTION_WIDTH, y + 2, right, y + h - 2, 0xFF4C566A);
+            graphics.drawCenteredString(font, action, right - ACTION_WIDTH / 2, y + 6, COLOR_TEXT);
+            right -= ACTION_WIDTH + 4;
         }
+        Component cost = WarTooltips.costLabel(entry);
+        graphics.drawString(font, cost, right - font.width(cost), y + 6, COLOR_TEXT);
+        String name = font.plainSubstrByWidth(entry.displayName(), Math.max(0, right - font.width(cost) - x - 12));
+        graphics.drawString(font, name, x + 6, y + 6, vulnerable ? 0xEBCB8B : COLOR_TEXT);
+    }
 
-        void setBounds(int x, int y, int width, int height) {
-            headerBar.setPosAndSize(x, y, width, SECTION_HEADER_HEIGHT);
-            headerBar.alignWidgets();
-            int listTop = y + SECTION_HEADER_HEIGHT + SECTION_HEADER_GAP;
-            int listHeight = Math.max(MIN_SECTION_LIST_HEIGHT, height - SECTION_HEADER_HEIGHT - SECTION_HEADER_GAP);
-            int listWidth = Math.max(0, width - SCROLLBAR_WIDTH - 2);
-            listPanel.setPosAndSize(x, listTop, listWidth, listHeight);
-            listPanel.alignWidgets();
-            scrollBar.setPosAndSize(x + width - SCROLLBAR_WIDTH, listTop, SCROLLBAR_WIDTH, listHeight);
+    /** "Declare" / "End war" while that action is possible, otherwise null. */
+    @Nullable
+    private static Component actionLabel(WarTeamEntry entry, Section section) {
+        if (section == Section.INCOMING || entry.isPending() || !ClientWarState.canManageWar()) {
+            return null;
         }
+        return Component.translatable(section == Section.DECLARE ? "gui.lc_ftb_hook.war.declare" : "gui.lc_ftb_hook.war.end_war");
+    }
 
-        void refreshList() {
-            if (listPanel != null) {
-                listPanel.setScrollY(0);
-                listPanel.refreshWidgets();
-                listPanel.alignWidgets();
-            }
+    private void click(WarTeamEntry entry, Section section, int localX) {
+        if (!ClientWarState.canManageWar() || section == Section.INCOMING) {
+            return;
         }
-
-        private String filterQuery() {
-            return headerBar == null ? "" : headerBar.filterQuery();
-        }
-
-        private List<WarTeamEntry> filteredEntries() {
-            return filterEntries(sourceEntries.get(), filterQuery());
+        int rowWidth = boxWidth - PAD * 2 - 6;
+        boolean onAction = actionLabel(entry, section) != null && localX >= rowWidth - 4 - ACTION_WIDTH;
+        if (entry.isPending() || onAction) {
+            PacketDistributor.sendToServer(new ToggleWarPayload(entry.teamId()));
         }
     }
 
-    private static class WarScrollBar extends PanelScrollBar {
-        WarScrollBar(BaseScreen screen, Panel panel) {
-            super(screen, panel);
-        }
-
-        @Override
-        public boolean shouldDraw() {
-            return super.shouldDraw() && getMaxValue() > getMinValue();
-        }
-
-        @Override
-        public void drawBackground(GuiGraphics graphics, Theme theme, int x, int y, int w, int h) {
-            if (!shouldDraw()) {
-                return;
-            }
-            super.drawBackground(graphics, theme, x, y, w, h);
-        }
-
-        @Override
-        public void draw(GuiGraphics graphics, Theme theme, int x, int y, int w, int h) {
-            if (!shouldDraw()) {
-                return;
-            }
-            super.draw(graphics, theme, x, y, w, h);
-        }
-    }
-
-    private static class SectionHeaderBar extends Panel {
-        private final Component title;
-        private final Runnable onFilterChanged;
-        private TextBox filterBox;
-
-        SectionHeaderBar(BaseScreen screen, Component title, Runnable onFilterChanged) {
-            super(screen);
-            this.title = title;
-            this.onFilterChanged = onFilterChanged;
-            setOnlyRenderWidgetsInside(true);
-            setOnlyInteractWithWidgetsInside(true);
-        }
-
-        String filterQuery() {
-            return filterBox == null ? "" : filterBox.getText();
-        }
-
-        @Override
-        public void addWidgets() {
-            filterBox = new TextBox(this) {
-                @Override
-                public void onTextChanged() {
-                    onFilterChanged.run();
-                }
-            };
-            filterBox.ghostText = Component.translatable("gui.lc_ftb_hook.war.filter_ghost").getString();
-            filterBox.charLimit = 48;
-            add(filterBox);
-        }
-
-        @Override
-        public void alignWidgets() {
-            if (filterBox == null) {
-                return;
-            }
-            int filterWidth = Math.min(FILTER_BOX_MAX_WIDTH, Math.max(FILTER_BOX_MIN_WIDTH, width / 3));
-            int filterX = Math.max(width - filterWidth - 2, 0);
-            filterBox.setPosAndSize(filterX, (height - FILTER_BOX_HEIGHT) / 2, filterWidth, FILTER_BOX_HEIGHT);
-        }
-
-        @Override
-        public void draw(GuiGraphics graphics, Theme theme, int x, int y, int w, int h) {
-            NordColors.POLAR_NIGHT_1.draw(graphics, x, y + h - 1, w, 1);
-
-            if (filterBox != null && filterBox.width > 0) {
-                int bx = x + filterBox.getX();
-                int by = y + filterBox.getY();
-                NordColors.POLAR_NIGHT_0.draw(graphics, bx, by, filterBox.width, filterBox.height);
-                NordColors.POLAR_NIGHT_3.draw(graphics, bx, by + filterBox.height - 1, filterBox.width, 1);
-            }
-
-            int titleMaxWidth = filterBox == null || filterBox.width <= 0
-                    ? w - 4
-                    : Math.max(0, filterBox.getX() - 6);
-            Component heading = title.copy().withStyle(ChatFormatting.BOLD);
-            if (titleMaxWidth > 0 && theme.getStringWidth(heading) > titleMaxWidth) {
-                heading = Component.literal(theme.trimStringToWidth(heading.getString(), titleMaxWidth - 4) + "...");
-            }
-            if (titleMaxWidth > 0) {
-                theme.drawString(graphics, heading, x + 2, y + 6, NordColors.FROST_2, 0);
-            }
-
-            super.draw(graphics, theme, x, y, w, h);
-        }
-    }
-
-    private static class WarEntryListPanel extends Panel {
-        private final Supplier<List<WarTeamEntry>> entriesSupplier;
-        private final SectionMode mode;
-        private final Component emptyMessage;
-
-        WarEntryListPanel(BaseScreen screen, Supplier<List<WarTeamEntry>> entriesSupplier, SectionMode mode, Component emptyMessage) {
-            super(screen);
-            this.entriesSupplier = entriesSupplier;
-            this.mode = mode;
-            this.emptyMessage = emptyMessage;
-            setOnlyRenderWidgetsInside(true);
-            setOnlyInteractWithWidgetsInside(true);
-        }
-
-        @Override
-        public void addWidgets() {
-            if (mode == SectionMode.DECLARE && !ClientWarState.canManageWar()) {
-                add(new EmptyMessage(this, Component.translatable("gui.lc_ftb_hook.war.view_only").withStyle(ChatFormatting.GRAY, ChatFormatting.ITALIC)));
-                return;
-            }
-
-            List<WarTeamEntry> entries = entriesSupplier.get();
-            if (entries.isEmpty()) {
-                Component message = emptyMessage;
-                if (mode == SectionMode.DECLARE && !ClientWarState.availableTargets().isEmpty()) {
-                    message = Component.translatable("gui.lc_ftb_hook.war.search_empty").withStyle(ChatFormatting.GRAY, ChatFormatting.ITALIC);
-                }
-                add(new EmptyMessage(this, message));
-                return;
-            }
-
-            for (WarTeamEntry entry : entries) {
-                add(createRow(entry));
-            }
-        }
-
-        private WarEntryRow createRow(WarTeamEntry entry) {
-            return switch (mode) {
-                case INCOMING -> new WarEntryRow(this, entry, mode, null, null, true, false);
-                case OUTGOING -> new WarEntryRow(
-                        this,
-                        entry,
-                        mode,
-                        entry.isPending() ? null : Component.translatable("gui.lc_ftb_hook.war.end_war"),
-                        entry.teamId(),
-                        false,
-                        false
-                );
-                case DECLARE -> new WarEntryRow(
-                        this,
-                        entry,
-                        mode,
-                        entry.isPending() ? null : Component.translatable("gui.lc_ftb_hook.war.declare"),
-                        entry.teamId(),
-                        false,
-                        true
-                );
-            };
-        }
-
-        @Override
-        public void alignWidgets() {
-            int y = 0;
-            for (Widget widget : widgets) {
-                widget.setPos(0, y);
-                widget.setWidth(width);
-                if (widget instanceof EmptyMessage) {
-                    widget.setHeight(EMPTY_ROW_HEIGHT);
-                    y += EMPTY_ROW_HEIGHT;
-                } else if (widget instanceof WarEntryRow entryRow) {
-                    widget.setHeight(ROW_HEIGHT);
-                    entryRow.alignWidgets();
-                    y += ROW_HEIGHT + ROW_GAP;
-                }
+    @Override
+    protected void renderContent(GuiGraphics graphics, int mouseX, int mouseY) {
+        graphics.drawString(font, "?", left + boxWidth - 15, top + 7, COLOR_MUTED);
+        for (Section section : Section.values()) {
+            int y = sectionTops.getOrDefault(section, top);
+            graphics.drawString(font, heading(section).copy().withStyle(ChatFormatting.BOLD), left + PAD, y + 4, 0x88C0D0);
+            if (entries(section).isEmpty()) {
+                graphics.drawString(font, emptyMessage(section), left + PAD + 6, y + SECTION_HEADER + 4, COLOR_MUTED);
             }
         }
     }
 
-    private static class EmptyMessage extends Button {
-        EmptyMessage(Panel panel, Component label) {
-            super(panel, label, Color4I.empty());
-        }
-
-        @Override
-        public void draw(GuiGraphics graphics, Theme theme, int x, int y, int w, int h) {
-            theme.drawString(graphics, getTitle(), x + 10, y + 3, NordColors.SNOW_STORM_2, 0);
-        }
-
-        @Override
-        public void onClicked(dev.ftb.mods.ftblibrary.ui.input.MouseButton button) {
-        }
+    private static Component heading(Section section) {
+        return Component.translatable(switch (section) {
+            case INCOMING -> "gui.lc_ftb_hook.war.incoming_heading";
+            case OUTGOING -> "gui.lc_ftb_hook.war.outgoing_heading";
+            case DECLARE -> "gui.lc_ftb_hook.war.declare_heading";
+        });
     }
 
-    private static class WarEntryRow extends Panel {
-        private static final int INFO_BUTTON_SIZE = 16;
-
-        private final WarTeamEntry entry;
-        private final SectionMode sectionMode;
-        private final Component actionLabel;
-        private final UUID actionTarget;
-        private final boolean infoOnly;
-        private final boolean declareAction;
-        private int costX;
-        private int costWidth;
-
-        WarEntryRow(
-                Panel panel,
-                WarTeamEntry entry,
-                SectionMode sectionMode,
-                Component actionLabel,
-                UUID actionTarget,
-                boolean infoOnly,
-                boolean declareAction
-        ) {
-            super(panel);
-            this.entry = entry;
-            this.sectionMode = sectionMode;
-            this.actionLabel = actionLabel;
-            this.actionTarget = actionTarget;
-            this.infoOnly = infoOnly;
-            this.declareAction = declareAction;
+    private Component emptyMessage(Section section) {
+        if (section == Section.DECLARE && !ClientWarState.canManageWar()) {
+            return Component.translatable("gui.lc_ftb_hook.war.view_only").withStyle(ChatFormatting.ITALIC);
         }
-
-        private void sendToggleWar() {
-            UUID target = actionTarget != null ? actionTarget : entry.teamId();
-            PacketDistributor.sendToServer(new ToggleWarPayload(target));
+        if (section == Section.DECLARE && !ClientWarState.availableTargets().isEmpty()) {
+            return Component.translatable("gui.lc_ftb_hook.war.search_empty").withStyle(ChatFormatting.ITALIC);
         }
-
-        @Override
-        public void addWidgets() {
-            if (entry.isPending() && ClientWarState.canManageWar() && sectionMode != SectionMode.INCOMING) {
-                add(new Button(this, Component.empty(), Color4I.empty()) {
-                    @Override
-                    public void onClicked(dev.ftb.mods.ftblibrary.ui.input.MouseButton button) {
-                        sendToggleWar();
-                    }
-
-                    @Override
-                    public void draw(GuiGraphics graphics, Theme theme, int x, int y, int w, int h) {
-                    }
-                });
-            }
-
-            if (!infoOnly && !entry.isPending() && actionLabel != null && ClientWarState.canManageWar()) {
-                add(new NordButton(
-                        this,
-                        actionLabel,
-                        declareAction
-                                ? WarIcons.ICON
-                                : Icons.CANCEL.withTint(NordColors.SNOW_STORM_1)
-                ) {
-                    @Override
-                    public void onClicked(dev.ftb.mods.ftblibrary.ui.input.MouseButton button) {
-                        sendToggleWar();
-                    }
-                });
-            }
-
-            add(new SimpleButton(this, Component.empty(), Icons.INFO, (button, mouseButton) -> {}) {
-                @Override
-                public void addMouseOverText(TooltipList list) {
-                    addEntryTooltip(list, entry, sectionMode);
-                }
-
-                @Override
-                public void playClickSound() {
-                }
-            });
-        }
-
-        @Override
-        public void alignWidgets() {
-            if (width <= 0 || widgets.isEmpty()) {
-                return;
-            }
-
-            Theme theme = getGui().getTheme();
-            Component costLabel = entry.isPending()
-                    ? Component.translatable("gui.lc_ftb_hook.pending").withStyle(ChatFormatting.GOLD)
-                    : formatEntryCost(entry.warCostCopper());
-            costWidth = theme.getStringWidth(costLabel) + 10;
-
-            int right = width - ROW_PAD;
-            Widget info = widgets.getLast();
-            info.setPosAndSize(right - INFO_BUTTON_SIZE, (height - INFO_BUTTON_SIZE) / 2, INFO_BUTTON_SIZE, INFO_BUTTON_SIZE);
-            right -= INFO_BUTTON_SIZE + ROW_BUTTON_GAP;
-
-            int left = ROW_PAD;
-            if (widgets.size() > 1) {
-                Widget leading = widgets.getFirst();
-                if (entry.isPending()) {
-                    leading.setPosAndSize(ROW_PAD, 0, right - ROW_PAD, height);
-                } else if (actionLabel != null) {
-                    int actionWidth = Math.min(88, Math.max(68, theme.getStringWidth(actionLabel) + 24));
-                    leading.setPosAndSize(right - actionWidth, (height - 18) / 2, actionWidth, 18);
-                    right -= actionWidth + ROW_BUTTON_GAP;
-                }
-            }
-
-            costX = Math.max(left + 40, right - costWidth);
-        }
-
-        @Override
-        public void drawBackground(GuiGraphics graphics, Theme theme, int x, int y, int w, int h) {
-            if (costWidth <= 0) {
-                alignWidgets();
-            }
-
-            Color4I background = isMouseOver() ? NordColors.POLAR_NIGHT_1 : NordColors.POLAR_NIGHT_2;
-            boolean vulnerable = sectionMode == SectionMode.OUTGOING && entry.hasWarVulnerability();
-            if (vulnerable && !isMouseOver()) {
-                background = NordColors.POLAR_NIGHT_1;
-            }
-            background.withAlpha(isMouseOver() ? 220 : (vulnerable ? 200 : 180)).draw(graphics, x + 1, y, w - 2, h);
-            if (vulnerable) {
-                NordColors.YELLOW.withAlpha(isMouseOver() ? 200 : 140).draw(graphics, x + 1, y, 2, h);
-            } else if (isMouseOver()) {
-                (declareAction ? NordColors.RED : NordColors.FROST_1).withAlpha(160).draw(graphics, x + 1, y, 2, h);
-            }
-
-            Component costLabel = entry.isPending()
-                    ? Component.translatable("gui.lc_ftb_hook.pending").withStyle(ChatFormatting.GOLD)
-                    : formatEntryCost(entry.warCostCopper());
-            int nameMaxWidth = Math.max(0, costX - ROW_PAD - ROW_BUTTON_GAP);
-            Component name = Component.literal(entry.displayName()).withStyle(ChatFormatting.WHITE);
-            Color4I nameColor = vulnerable ? NordColors.YELLOW : NordColors.SNOW_STORM_0;
-            if (nameMaxWidth > 0 && theme.getStringWidth(name) > nameMaxWidth) {
-                name = Component.literal(theme.trimStringToWidth(name.getString(), nameMaxWidth - 4) + "...");
-            }
-
-            if (nameMaxWidth > 0) {
-                theme.drawString(graphics, name, x + ROW_PAD, y + 7, nameColor, 0);
-            }
-
-            NordColors.POLAR_NIGHT_0.withAlpha(200).draw(graphics, x + costX, y + 4, costWidth, h - 8);
-            theme.drawString(graphics, costLabel, x + costX + 5, y + 7, NordColors.SNOW_STORM_0, 0);
-        }
+        return Component.translatable(switch (section) {
+            case INCOMING -> "gui.lc_ftb_hook.war.empty_incoming";
+            case OUTGOING -> "gui.lc_ftb_hook.war.empty_outgoing";
+            case DECLARE -> "gui.lc_ftb_hook.war.empty_targets";
+        }).withStyle(ChatFormatting.ITALIC);
     }
 }

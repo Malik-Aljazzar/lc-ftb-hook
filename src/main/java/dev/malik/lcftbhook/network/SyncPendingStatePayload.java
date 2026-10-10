@@ -2,7 +2,7 @@ package dev.malik.lcftbhook.network;
 
 import dev.malik.lcftbhook.LCFtbHook;
 import dev.malik.lcftbhook.client.ClientPendingState;
-import dev.malik.lcftbhook.client.PendingStateUiRefresh;
+import dev.malik.lcftbhook.client.ClientUiRefresh;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
@@ -68,7 +68,7 @@ public record SyncPendingStatePayload(
                     payload.pendingForceUnloads,
                     payload.pendingRegionAssignments
             );
-            PendingStateUiRefresh.refreshOpenScreens();
+            ClientUiRefresh.refreshOpenScreens();
         });
     }
 }

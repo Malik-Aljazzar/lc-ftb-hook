@@ -46,15 +46,6 @@ public record ChunkOwnership(
         return new ChunkOwnership(privateOwner, listingPricePerChunk, Map.copyOf(updated), accessLists, label);
     }
 
-    public ChunkOwnership withoutOverrideProperty(String propertyId) {
-        if (!protectionOverride.containsKey(propertyId)) {
-            return this;
-        }
-        Map<String, String> updated = new HashMap<>(protectionOverride);
-        updated.remove(propertyId);
-        return new ChunkOwnership(privateOwner, listingPricePerChunk, Map.copyOf(updated), accessLists, label);
-    }
-
     public ChunkOwnership withAccessList(String propertyId, PlayerAccessList list) {
         Map<String, PlayerAccessList> updated = new HashMap<>(accessLists);
         if (list.isEmpty()) {

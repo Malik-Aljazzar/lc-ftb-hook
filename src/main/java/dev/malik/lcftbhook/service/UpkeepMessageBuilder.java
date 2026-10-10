@@ -4,8 +4,6 @@ import dev.malik.lcftbhook.LCFtbHook;
 import dev.malik.lcftbhook.data.FtbHookSavedData;
 import dev.malik.lcftbhook.data.Region;
 import dev.malik.lcftbhook.service.ProtectionDismantleOrder.DismantleStep;
-import dev.malik.lcftbhook.util.MoneyMessageUtil;
-import dev.malik.lcftbhook.util.MoneyUtil;
 import dev.malik.lcftbhook.util.UpkeepPeriodFormat;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.ClickEvent;
@@ -25,7 +23,7 @@ public final class UpkeepMessageBuilder {
     }
 
     public static Component buildUnaffordableRestorationMessage(
-            MinecraftServer server, UUID teamId, List<DismantleStep> unaffordable, List<String> unaffordableWarNames
+            MinecraftServer server, UUID teamId, List<DismantleStep> unaffordable, List<String> unaffordableWarNames, int unaffordableForceLoadCount
     ) {
         MutableComponent msg = Component.empty();
         boolean wroteAnything = false;
@@ -36,6 +34,15 @@ public final class UpkeepMessageBuilder {
                     .append(Component.translatable("message.lc_ftb_hook.unaffordable_restoration_header", unaffordable.size())
                             .withStyle(ChatFormatting.YELLOW, ChatFormatting.BOLD)));
             appendProtectionList(server, teamId, msg, unaffordable, ChatFormatting.YELLOW);
+            wroteAnything = true;
+        }
+
+        if (unaffordableForceLoadCount > 0) {
+            if (wroteAnything) msg.append("\n");
+            msg.append(Component.literal("⌛ ")
+                    .withStyle(ChatFormatting.YELLOW)
+                    .append(Component.translatable("message.lc_ftb_hook.unaffordable_force_load_header", unaffordableForceLoadCount)
+                            .withStyle(ChatFormatting.YELLOW, ChatFormatting.BOLD)));
             wroteAnything = true;
         }
 
@@ -126,7 +133,7 @@ public final class UpkeepMessageBuilder {
     }
 
     public static Component buildSummary(UpkeepBreakdown breakdown) {
-        Component amount = MoneyMessageUtil.formatValue(breakdown.totalCost());
+        Component amount = dev.malik.lcftbhook.util.Money.formatValue(breakdown.totalCostCopper());
         Component period = UpkeepPeriodFormat.format(breakdown.periodMinutes());
 
         MutableComponent message = Component.translatable("message.lc_ftb_hook.upkeep_paid", amount, period)
@@ -178,7 +185,7 @@ public final class UpkeepMessageBuilder {
 
         message.append("\n");
         appendLine(message, "message.lc_ftb_hook.upkeep_detail.total",
-                MoneyMessageUtil.formatValue(breakdown.totalCost()).copy().withStyle(ChatFormatting.GREEN));
+                dev.malik.lcftbhook.util.Money.formatValue(breakdown.totalCostCopper()).copy().withStyle(ChatFormatting.GREEN));
 
         return message;
     }
@@ -196,7 +203,7 @@ public final class UpkeepMessageBuilder {
             message.append(Component.literal("  • ").withStyle(ChatFormatting.DARK_GRAY));
             message.append(styled(Component.translatable(line.labelKey()), ChatFormatting.YELLOW));
             message.append(Component.literal(" +").withStyle(ChatFormatting.GRAY));
-            message.append(MoneyMessageUtil.formatValue(MoneyUtil.fromCopper(line.pricePerChunk()))
+            message.append(dev.malik.lcftbhook.util.Money.formatValue(line.pricePerChunk())
                     .copy().withStyle(ChatFormatting.GOLD));
             message.append(Component.translatable("gui.lc_ftb_hook.protection_price_per_chunk_suffix")
                     .withStyle(ChatFormatting.GOLD));
@@ -205,9 +212,13 @@ public final class UpkeepMessageBuilder {
 
         message.append(formatFormula(
                 "message.lc_ftb_hook.upkeep_detail.build_formula",
-                MoneyMessageUtil.formatValue(MoneyUtil.fromCopper(section.basePrice())),
+                // basePrice is the raw config sum, denominated in tenths of a
+                // copper per chunk (see LCFtbHookConfig's [general] note) -
+                // divided here so the displayed rate is the real per-chunk
+                // price, not 10x too large.
+                dev.malik.lcftbhook.util.Money.formatValue(Math.floorDiv(section.basePrice(), 10L)),
                 section.billableChunks(),
-                MoneyMessageUtil.formatValue(MoneyUtil.fromCopper(section.protectionCopper()))
+                dev.malik.lcftbhook.util.Money.formatValue(section.protectionCopper())
         ));
         message.append("\n");
     }
@@ -229,7 +240,7 @@ public final class UpkeepMessageBuilder {
                     line.incoming()
                             ? "message.lc_ftb_hook.upkeep_detail.war_incoming_line"
                             : "message.lc_ftb_hook.upkeep_detail.war_outgoing_line",
-                    MoneyMessageUtil.formatValue(MoneyUtil.fromCopper(line.warCostCopper()))
+                    dev.malik.lcftbhook.util.Money.formatValue(line.warCostCopper())
             ).withStyle(ChatFormatting.GOLD));
             message.append("\n");
         }
@@ -241,16 +252,16 @@ public final class UpkeepMessageBuilder {
                     "message.lc_ftb_hook.upkeep_detail.war_incoming_formula",
                     k,
                     trimExponent(l),
-                    MoneyMessageUtil.formatValue(MoneyUtil.fromCopper(breakdown.baseUpkeepCopper())),
+                    dev.malik.lcftbhook.util.Money.formatValue(breakdown.baseUpkeepCopper()),
                     WarUpkeepMath.formatExtraTermSum(k, l),
-                    MoneyMessageUtil.formatValue(MoneyUtil.fromCopper(breakdown.incomingWarCopper()))
+                    dev.malik.lcftbhook.util.Money.formatValue(breakdown.incomingWarCopper())
             ).withStyle(ChatFormatting.GRAY));
             message.append("\n");
         }
         if (breakdown.outgoingWarCopper() > 0) {
             message.append(Component.translatable(
                     "message.lc_ftb_hook.upkeep_detail.war_outgoing_total",
-                    MoneyMessageUtil.formatValue(MoneyUtil.fromCopper(breakdown.outgoingWarCopper()))
+                    dev.malik.lcftbhook.util.Money.formatValue(breakdown.outgoingWarCopper())
             ).withStyle(ChatFormatting.GRAY));
             message.append("\n");
         }
@@ -259,10 +270,10 @@ public final class UpkeepMessageBuilder {
         if (breakdown.baseUpkeepCopper() > 0 || breakdown.totalWarCopper() > 0) {
             message.append(Component.translatable(
                     "message.lc_ftb_hook.upkeep_detail.war_total_formula",
-                    MoneyMessageUtil.formatValue(MoneyUtil.fromCopper(breakdown.baseUpkeepCopper())),
-                    MoneyMessageUtil.formatValue(MoneyUtil.fromCopper(breakdown.incomingWarCopper())),
-                    MoneyMessageUtil.formatValue(MoneyUtil.fromCopper(breakdown.outgoingWarCopper())),
-                    MoneyMessageUtil.formatValue(MoneyUtil.fromCopper(expectedTotal))
+                    dev.malik.lcftbhook.util.Money.formatValue(breakdown.baseUpkeepCopper()),
+                    dev.malik.lcftbhook.util.Money.formatValue(breakdown.incomingWarCopper()),
+                    dev.malik.lcftbhook.util.Money.formatValue(breakdown.outgoingWarCopper()),
+                    dev.malik.lcftbhook.util.Money.formatValue(expectedTotal)
             ).withStyle(ChatFormatting.DARK_GRAY));
             message.append("\n");
         }

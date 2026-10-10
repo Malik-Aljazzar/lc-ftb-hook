@@ -1,6 +1,15 @@
-# Wendet Dev-Server-Einstellungen an: Creative + OP fuer Kestrel92 und WillowDusk (die tatsaechlichen Dev-Client-Usernamen, siehe build.gradle)
+# Wendet Dev-Server-Einstellungen an: Creative + OP fuer die Dev-Client-Usernamen (siehe build.gradle)
 param(
-    [string]$RunDir = (Join-Path (Split-Path $PSScriptRoot -Parent) "run")
+    [string]$RunDir = (Join-Path (Split-Path $PSScriptRoot -Parent) "run"),
+    # dev/ops-opac.json (OpacOwner/OpacOfficer) for the OPAC dev server - see
+    # scripts/run-server-opac.ps1. Relative to this script's own directory,
+    # same convention as the hardcoded dev/ftbchunks-world.snbt etc. below.
+    [string]$OpsFile = "dev/ops.json",
+    # dev/server-opac.properties for the OPAC dev server: same content as
+    # dev/server.properties but on distinct server-port/rcon.port (25566/25576
+    # vs. the main server's 25565/25575) so both dev servers can run at the
+    # same time without a port clash.
+    [string]$PropertiesTemplate = "dev/server.properties"
 )
 
 $ErrorActionPreference = "Stop"
@@ -22,7 +31,7 @@ if (-not (Test-Path $RunDir)) {
     New-Item -ItemType Directory -Path $RunDir | Out-Null
 }
 
-Copy-Item (Join-Path $PSScriptRoot "dev/ops.json") (Join-Path $RunDir "ops.json") -Force
+Copy-Item (Join-Path $PSScriptRoot $OpsFile) (Join-Path $RunDir "ops.json") -Force
 
 $ftbChunksConfig = Join-Path $PSScriptRoot "dev/ftbchunks-world.snbt"
 $serverConfigDir = Join-Path $RunDir "world/serverconfig"
@@ -31,7 +40,7 @@ if (Test-Path $ftbChunksConfig) {
     Copy-Item $ftbChunksConfig (Join-Path $serverConfigDir "ftbchunks-world.snbt") -Force
 }
 
-$templatePath = Join-Path $PSScriptRoot "dev/server.properties"
+$templatePath = Join-Path $PSScriptRoot $PropertiesTemplate
 $propsPath = Join-Path $RunDir "server.properties"
 
 # server.properties can balloon if a previous script run appended/corrupted it
@@ -113,27 +122,19 @@ foreach ($configPath in $modConfigTargets) {
         } else {
             Write-Utf8NoBomFile -Path $configPath -Lines @(
                 "[general]",
-                "`tlandChunkGroupSize = 5",
-                "`tupkeepPeriodMinutes = 1",
-                "",
-                "[debug]",
-                "`tdebugTestTeamCommands = true"
+                "`tupkeepPeriodMinutes = 1"
             )
         }
         continue
     }
 
     $devPatches = [ordered]@{
-        "landChunkGroupSize" = "5"
         "upkeepPeriodMinutes" = "1"
         "warCostMultiplier" = "1.2"
-        "debugTestTeamCommands" = "true"
     }
     $sectionForKey = @{
-        "landChunkGroupSize" = "general"
         "upkeepPeriodMinutes" = "general"
         "warCostMultiplier" = "war"
-        "debugTestTeamCommands" = "debug"
     }
 
     $lines = Get-Content $configPath
@@ -207,4 +208,4 @@ foreach ($configPath in $modConfigTargets) {
     }
 }
 
-Write-Host "Dev-Server: gamemode=creative, force-gamemode=true, online-mode=false, OP fuer Kestrel92 + WillowDusk, ftbchunks-world.snbt, landChunkGroupSize=5, upkeepPeriodMinutes=2, debugTestTeamCommands=true" -ForegroundColor Cyan
+Write-Host "Dev-Server: gamemode=creative, force-gamemode=true, online-mode=false, OP laut $OpsFile, ftbchunks-world.snbt, upkeepPeriodMinutes=1" -ForegroundColor Cyan

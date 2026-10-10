@@ -1,58 +1,55 @@
 package dev.malik.lcftbhook.client.gui;
 
-import dev.ftb.mods.ftblibrary.icon.Icons;
-import dev.ftb.mods.ftblibrary.ui.BaseScreen;
-import dev.ftb.mods.ftblibrary.ui.NordButton;
-import dev.ftb.mods.ftblibrary.ui.SimpleButton;
-import dev.ftb.mods.ftblibrary.ui.Theme;
-import dev.ftb.mods.ftblibrary.ui.input.MouseButton;
-import dev.ftb.mods.ftblibrary.ui.misc.NordColors;
 import dev.malik.lcftbhook.client.ClientChunkOwnership;
 import dev.malik.lcftbhook.network.BuyChunksPayload;
-import dev.malik.lcftbhook.util.MoneyUtil;
+import dev.malik.lcftbhook.util.Money;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.neoforged.neoforge.network.PacketDistributor;
 
+import javax.annotation.Nullable;
 import java.util.List;
 
 /** Price/cancel/confirm dialog for buying one or more listed chunks ("Buy" or "Buy as Country"). */
-public class ChunkBuyConfirmScreen extends BaseScreen {
-    private static final int HEADER_HEIGHT = 22;
+public class ChunkBuyConfirmScreen extends LcScreen {
+    private static final int COLOR_WARNING = 0xEBCB8B;
 
-    private final BaseScreen returnTo;
     private final List<String> chunkKeys;
     private final boolean asCountry;
 
-    private SimpleButton backButton;
-    private NordButton confirmButton;
-
-    public ChunkBuyConfirmScreen(BaseScreen returnTo, List<String> chunkKeys, boolean asCountry) {
-        this.returnTo = returnTo;
+    public ChunkBuyConfirmScreen(@Nullable Screen parent, List<String> chunkKeys, boolean asCountry) {
+        super(Component.translatable("gui.lc_ftb_hook.marketplace.buy_title", chunkKeys.size()), parent);
         this.chunkKeys = chunkKeys;
         this.asCountry = asCountry;
     }
 
     @Override
-    public boolean onInit() {
-        setWidth(Math.min(getScreen().getGuiScaledWidth() - 20, 220));
-        setHeight(80);
-        return true;
+    protected int preferredWidth(int screenWidth) {
+        return 220;
     }
 
     @Override
-    public void addWidgets() {
-        backButton = new SimpleButton(this, Component.translatable("gui.back"), Icons.BACK, (button, mouseButton) -> back());
-        add(backButton);
+    protected int preferredHeight(int screenHeight) {
+        return 84;
+    }
 
-        confirmButton = new NordButton(this, Component.translatable("gui.lc_ftb_hook.marketplace.buy"), Icons.ACCEPT) {
-            @Override
-            public void onClicked(MouseButton button) {
-                PacketDistributor.sendToServer(new BuyChunksPayload(chunkKeys, asCountry));
-                back();
-            }
-        };
-        add(confirmButton);
+    @Override
+    protected void initContent() {
+        button(Component.translatable("gui.lc_ftb_hook.marketplace.buy"), left + boxWidth - 100, top + boxHeight - 26, 92, b -> {
+            PacketDistributor.sendToServer(new BuyChunksPayload(chunkKeys, asCountry));
+            onClose();
+        });
+    }
+
+    @Override
+    protected void renderContent(GuiGraphics graphics, int mouseX, int mouseY) {
+        Component total = Component.translatable("gui.lc_ftb_hook.marketplace.buy_total", Money.format(totalCopper()));
+        graphics.drawString(font, total, left + PAD, top + HEADER_HEIGHT + 10, COLOR_TEXT_DIM);
+        if (asCountry) {
+            graphics.drawString(font, Component.translatable("gui.lc_ftb_hook.marketplace.buying_as_country"),
+                    left + PAD, top + HEADER_HEIGHT + 22, COLOR_WARNING);
+        }
     }
 
     private long totalCopper() {
@@ -64,41 +61,5 @@ public class ChunkBuyConfirmScreen extends BaseScreen {
             }
         }
         return total;
-    }
-
-    private void back() {
-        if (returnTo != null) {
-            returnTo.openGui();
-        } else {
-            closeGui(true);
-        }
-    }
-
-    @Override
-    public void alignWidgets() {
-        backButton.setPosAndSize(5, 5, 16, 16);
-        confirmButton.setPosAndSize(width - 100, height - 26, 92, 18);
-    }
-
-    @Override
-    public void drawForeground(GuiGraphics graphics, Theme theme, int x, int y, int w, int h) {
-        super.drawForeground(graphics, theme, x, y, w, h);
-        theme.drawString(
-                graphics,
-                Component.translatable("gui.lc_ftb_hook.marketplace.buy_title", chunkKeys.size()),
-                x + w / 2, y + 7, NordColors.SNOW_STORM_0, Theme.CENTERED
-        );
-        Component total = Component.translatable(
-                "gui.lc_ftb_hook.marketplace.buy_total",
-                MoneyUtil.fromCopper(totalCopper()).getText()
-        );
-        theme.drawString(graphics, total, x + 8, y + HEADER_HEIGHT + 10, NordColors.SNOW_STORM_1, 0);
-        if (asCountry) {
-            theme.drawString(
-                    graphics,
-                    Component.translatable("gui.lc_ftb_hook.marketplace.buying_as_country"),
-                    x + 8, y + HEADER_HEIGHT + 22, NordColors.YELLOW, 0
-            );
-        }
     }
 }

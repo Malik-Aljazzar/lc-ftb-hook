@@ -1,6 +1,5 @@
 package dev.malik.lcftbhook.client;
 
-import dev.ftb.mods.ftbchunks.client.map.MapManager;
 import dev.malik.lcftbhook.data.ProtectionProperty;
 import dev.malik.lcftbhook.data.RegionPropertyKey;
 
@@ -24,11 +23,39 @@ public final class ClientPendingState {
             Set<String> forceUnloads,
             Map<String, UUID> regionAssignments
     ) {
+        // Chunks whose pending force-load changed need their map highlight (hatching) redrawn.
+        Set<String> changed = new java.util.HashSet<>();
+        symmetricDifference(pendingForceLoads, forceLoads, changed);
+        symmetricDifference(pendingForceUnloads, forceUnloads, changed);
         pendingProperties = Map.copyOf(properties);
         pendingForceLoads = Set.copyOf(forceLoads);
         pendingForceUnloads = Set.copyOf(forceUnloads);
         pendingRegionAssignments = Map.copyOf(regionAssignments);
-        MapManager.getInstance().ifPresent(manager -> manager.updateAllRegions(false));
+        ClientUiRefresh.redrawMap();
+        dev.malik.lcftbhook.client.xaero.XaeroHighlightRefresh.refresh(changed);
+    }
+
+    private static void symmetricDifference(Set<String> before, Set<String> after, Set<String> into) {
+        before.stream().filter(key -> !after.contains(key)).forEach(into::add);
+        after.stream().filter(key -> !before.contains(key)).forEach(into::add);
+    }
+
+    /** How many force-loaded chunks a region of the own team will have once its queued force-load changes apply. */
+    public static int forceLoadCountAfterPending(UUID regionId) {
+        dev.malik.lcftbhook.data.Region defaultRegion = ClientRegions.getDefault();
+        UUID defaultId = defaultRegion != null ? defaultRegion.id() : null;
+        int count = ClientRegions.forceLoadCount(regionId);
+        for (String chunkKey : pendingForceLoads) {
+            if (regionId.equals(ClientRegionMembership.regionOf(chunkKey, defaultId))) {
+                count++;
+            }
+        }
+        for (String chunkKey : pendingForceUnloads) {
+            if (regionId.equals(ClientRegionMembership.regionOf(chunkKey, defaultId))) {
+                count--;
+            }
+        }
+        return Math.max(0, count);
     }
 
     public static boolean isPendingForceLoad(net.minecraft.resources.ResourceKey<net.minecraft.world.level.Level> dimension, int x, int z) {

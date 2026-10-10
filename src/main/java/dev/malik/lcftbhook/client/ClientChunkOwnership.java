@@ -1,6 +1,5 @@
 package dev.malik.lcftbhook.client;
 
-import dev.ftb.mods.ftbchunks.client.map.MapManager;
 import dev.malik.lcftbhook.data.ChunkOwnership;
 
 import java.util.Map;
@@ -14,7 +13,7 @@ public final class ClientChunkOwnership {
 
     public static void update(Map<String, ChunkOwnership> updated) {
         ownership = Map.copyOf(updated);
-        MapManager.getInstance().ifPresent(manager -> manager.updateAllRegions(false));
+        ClientUiRefresh.redrawMap();
         // The payload is the full current snapshot of every tracked (owned
         // or listed) chunk, not a delta - still far more scoped than every
         // loaded map-region, so this avoids queuing unrelated regions ahead

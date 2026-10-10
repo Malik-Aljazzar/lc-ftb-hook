@@ -1,6 +1,5 @@
 package dev.malik.lcftbhook.service;
 
-import dev.ftb.mods.ftbteams.api.Team;
 import dev.malik.lcftbhook.data.FtbHookSavedData;
 import dev.malik.lcftbhook.data.ProtectionProperty;
 import dev.malik.lcftbhook.data.Region;
@@ -76,9 +75,8 @@ public final class ProtectionRollbackService {
      * price: excludes entries whose region is already at minimum (those are
      * dismantle-restore targets, unbilled until restored).
      */
-    public static Map<String, String> pricingProperties(MinecraftServer server, Team team, TeamPendingState pendingState) {
+    public static Map<String, String> pricingProperties(MinecraftServer server, UUID teamId, TeamPendingState pendingState) {
         FtbHookSavedData savedData = FtbHookSavedData.get(server);
-        UUID teamId = team.getTeamId();
         Map<String, String> pricing = new HashMap<>();
         for (var entry : pendingState.pendingProperties().entrySet()) {
             UUID regionId = RegionPropertyKey.regionId(entry.getKey());
@@ -98,12 +96,12 @@ public final class ProtectionRollbackService {
 
     public static Map<String, String> pricingWithAppliedPending(
             MinecraftServer server,
-            Team team,
+            UUID teamId,
             TeamPendingState pendingState,
             UUID regionId,
             ProtectionProperty property
     ) {
-        Map<String, String> pricing = new HashMap<>(pricingProperties(server, team, pendingState));
+        Map<String, String> pricing = new HashMap<>(pricingProperties(server, teamId, pendingState));
         String key = RegionPropertyKey.encode(regionId, property.id());
         String serialized = pendingState.pendingProperties().get(key);
         if (serialized != null) {
@@ -114,13 +112,12 @@ public final class ProtectionRollbackService {
 
     public static TeamPendingState suspendProtection(
             MinecraftServer server,
-            Team team,
+            UUID teamId,
             UUID regionId,
             ProtectionProperty property,
             TeamPendingState pendingState
     ) {
         FtbHookSavedData savedData = FtbHookSavedData.get(server);
-        UUID teamId = team.getTeamId();
         String key = RegionPropertyKey.encode(regionId, property.id());
         TeamPendingState updated = pendingState;
         Region region = savedData.getRegion(teamId, regionId);
@@ -137,13 +134,12 @@ public final class ProtectionRollbackService {
 
     public static TeamPendingState restoreProtection(
             MinecraftServer server,
-            Team team,
+            UUID teamId,
             UUID regionId,
             ProtectionProperty property,
             TeamPendingState pendingState
     ) {
         FtbHookSavedData savedData = FtbHookSavedData.get(server);
-        UUID teamId = team.getTeamId();
         String key = RegionPropertyKey.encode(regionId, property.id());
         String serialized = pendingState.pendingProperties().get(key);
         if (serialized == null) {
@@ -157,15 +153,6 @@ public final class ProtectionRollbackService {
                 ? region.withoutProperty(property.id())
                 : region.withProperty(property.id(), serialized);
         savedData.updateRegion(teamId, updatedRegion);
-        // A no-op for a genuine dismantle-restore (always an INCREASE back
-        // to the pre-suspension value - see RegionService's javadoc on this
-        // method), but a queued deliberate DECREASE finally being committed
-        // here (cost went up, so it couldn't apply immediately - see
-        // RegionService#setRegionProperty) needs the same override sweep the
-        // immediate-apply path already gets.
-        if (RegionService.clearOverridesInvalidatedByRegionChange(savedData, teamId, regionId, property, serialized)) {
-            MarketplaceService.broadcastChunkOwnership(server);
-        }
         return pendingState.withoutPendingProperty(key);
     }
 }

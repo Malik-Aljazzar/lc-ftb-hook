@@ -1,92 +1,57 @@
 package dev.malik.lcftbhook.client.gui;
 
-import dev.ftb.mods.ftblibrary.icon.Icons;
-import dev.ftb.mods.ftblibrary.ui.BaseScreen;
-import dev.ftb.mods.ftblibrary.ui.NordButton;
-import dev.ftb.mods.ftblibrary.ui.SimpleButton;
-import dev.ftb.mods.ftblibrary.ui.TextBox;
-import dev.ftb.mods.ftblibrary.ui.Theme;
-import dev.ftb.mods.ftblibrary.ui.input.MouseButton;
-import dev.ftb.mods.ftblibrary.ui.misc.NordColors;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 
+import javax.annotation.Nullable;
 import java.util.function.Consumer;
 
 /** Small reusable single-line text prompt (e.g. naming a new region). */
-public class TextPromptScreen extends BaseScreen {
-    private static final int HEADER_HEIGHT = 22;
-
-    private final BaseScreen returnTo;
-    private final Component title;
+public class TextPromptScreen extends LcScreen {
     private final String ghostText;
     private final Consumer<String> onConfirm;
+    private EditBox textBox;
 
-    private SimpleButton backButton;
-    private TextBox textBox;
-    private NordButton confirmButton;
-
-    public TextPromptScreen(BaseScreen returnTo, Component title, String ghostText, Consumer<String> onConfirm) {
-        this.returnTo = returnTo;
-        this.title = title;
+    public TextPromptScreen(@Nullable Screen parent, Component title, String ghostText, Consumer<String> onConfirm) {
+        super(title, parent);
         this.ghostText = ghostText;
         this.onConfirm = onConfirm;
     }
 
     @Override
-    public boolean onInit() {
-        setWidth(Math.min(getScreen().getGuiScaledWidth() - 20, 220));
-        setHeight(70);
-        return true;
+    protected int preferredWidth(int screenWidth) {
+        return 220;
     }
 
     @Override
-    public void addWidgets() {
-        backButton = new SimpleButton(this, Component.translatable("gui.back"), Icons.BACK, (button, mouseButton) -> back());
-        add(backButton);
-
-        textBox = new TextBox(this);
-        textBox.ghostText = ghostText;
-        textBox.charLimit = 32;
-        add(textBox);
-
-        confirmButton = new NordButton(this, Component.translatable("gui.lc_ftb_hook.confirm"), Icons.ACCEPT) {
-            @Override
-            public void onClicked(MouseButton button) {
-                String value = textBox.getText().trim();
-                if (!value.isEmpty()) {
-                    onConfirm.accept(value);
-                    back();
-                }
-            }
-        };
-        add(confirmButton);
+    protected int preferredHeight(int screenHeight) {
+        return 76;
     }
 
-    private void back() {
-        if (returnTo != null) {
-            returnTo.openGui();
-        } else {
-            closeGui(true);
+    @Override
+    protected void initContent() {
+        textBox = addRenderableWidget(new EditBox(font, left + PAD, top + HEADER_HEIGHT + 8, boxWidth - PAD * 2, 18, title));
+        textBox.setMaxLength(32);
+        textBox.setHint(Component.literal(ghostText));
+        setInitialFocus(textBox);
+        button(Component.translatable("gui.lc_ftb_hook.confirm"), left + PAD, top + HEADER_HEIGHT + 32, boxWidth - PAD * 2, b -> confirm());
+    }
+
+    private void confirm() {
+        String value = textBox.getValue().trim();
+        if (!value.isEmpty()) {
+            onConfirm.accept(value);
+            onClose();
         }
     }
 
     @Override
-    public void alignWidgets() {
-        backButton.setPosAndSize(5, 5, 16, 16);
-        textBox.setPosAndSize(8, HEADER_HEIGHT + 8, width - 16, 18);
-        // Give the button its own full-width row instead of a narrow fixed
-        // width sharing space with something else - a fixed width (tried
-        // 70px, then 90px) kept clipping/overflowing "Confirm" at some GUI
-        // scales no matter how generous, since NordButton doesn't reliably
-        // constrain its own label to a narrow box. Full width removes the
-        // guesswork entirely.
-        confirmButton.setPosAndSize(8, HEADER_HEIGHT + 32, width - 16, 18);
-    }
-
-    @Override
-    public void drawForeground(GuiGraphics graphics, Theme theme, int x, int y, int w, int h) {
-        super.drawForeground(graphics, theme, x, y, w, h);
-        theme.drawString(graphics, title, x + w / 2, y + 7, NordColors.SNOW_STORM_0, Theme.CENTERED);
+    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_ENTER || keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_KP_ENTER) {
+            confirm();
+            return true;
+        }
+        return super.keyPressed(keyCode, scanCode, modifiers);
     }
 }

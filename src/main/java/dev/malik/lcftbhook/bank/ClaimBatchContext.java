@@ -1,11 +1,10 @@
 package dev.malik.lcftbhook.bank;
 
-import dev.ftb.mods.ftbchunks.net.RequestChunkChangePacket;
+import java.util.Locale;
 import dev.malik.lcftbhook.config.LCFtbHookConfig;
 import dev.malik.lcftbhook.service.ClaimPriceSync;
-import dev.malik.lcftbhook.util.MoneyMessageUtil;
-import dev.malik.lcftbhook.util.MoneyUtil;
-import io.github.lightman314.lightmanscurrency.api.money.bank.IBankAccount;
+import dev.malik.lcftbhook.util.Money;
+import dev.malik.lcftbhook.port.currency.CurrencyAccount;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 
@@ -13,6 +12,20 @@ import javax.annotation.Nullable;
 import java.util.UUID;
 
 public final class ClaimBatchContext {
+    /** A bulk chunk action, independent of which claim mod issued it. */
+    public enum Operation {
+        CLAIM, UNCLAIM, LOAD, UNLOAD, OTHER;
+
+        /** Maps a backend operation name (e.g. FTB Chunks' ChunkChangeOp) by name. */
+        public static Operation of(String name) {
+            try {
+                return valueOf(name.toUpperCase(Locale.ROOT));
+            } catch (IllegalArgumentException unknown) {
+                return OTHER;
+            }
+        }
+    }
+
     private static final ThreadLocal<Boolean> VALIDATING = ThreadLocal.withInitial(() -> false);
     private static final ThreadLocal<Boolean> SUPPRESS_NOTIFICATIONS = ThreadLocal.withInitial(() -> false);
     private static final ThreadLocal<UUID> PERSONAL_REFUND_PLAYER = new ThreadLocal<>();
@@ -66,15 +79,29 @@ public final class ClaimBatchContext {
         return PERSONAL_REFUND_PLAYER.get();
     }
 
-    public static void beginExecution(RequestChunkChangePacket.ChunkChangeOp operation, int chunkCount, UUID playerId) {
+    public static void beginExecution(Operation operation, int chunkCount, UUID playerId) {
         if (chunkCount <= 1) {
             return;
         }
-        if (operation != RequestChunkChangePacket.ChunkChangeOp.CLAIM
-                && operation != RequestChunkChangePacket.ChunkChangeOp.UNCLAIM) {
+        if (operation != Operation.CLAIM
+                && operation != Operation.UNCLAIM) {
             return;
         }
         EXECUTING.set(new BatchState(operation, playerId));
+    }
+
+    /** Parks the running batch (between the ticks of a spread-out area action); hand the result back to {@link #resume}. */
+    @Nullable
+    public static Object suspend() {
+        BatchState state = EXECUTING.get();
+        EXECUTING.remove();
+        return state;
+    }
+
+    public static void resume(@Nullable Object batch) {
+        if (batch instanceof BatchState state) {
+            EXECUTING.set(state);
+        }
     }
 
     public static void recordClaimSpend(long priceCopper) {
@@ -114,14 +141,14 @@ public final class ClaimBatchContext {
         state.uiSyncNeeded = true;
     }
 
-    public static void recordClaimInsufficientFunds(IBankAccount account, long unitPriceCopper) {
+    public static void recordClaimInsufficientFunds(CurrencyAccount account, long unitPriceCopper) {
         BatchState state = EXECUTING.get();
         if (state == null) {
             return;
         }
         state.claimInsufficientCount++;
         state.claimUnitPriceCopper = unitPriceCopper;
-        state.insufficientBalance = MoneyMessageUtil.formatBalance(account);
+        state.insufficientBalance = Money.formatBalance(account);
         state.uiSyncNeeded = true;
     }
 
@@ -136,11 +163,11 @@ public final class ClaimBatchContext {
                 return;
             }
 
-            if (state.operation == RequestChunkChangePacket.ChunkChangeOp.UNCLAIM && state.unclaimCount > 0) {
+            if (state.operation == Operation.UNCLAIM && state.unclaimCount > 0) {
                 sendUnclaimSummary(player, state);
             }
 
-            if (state.operation == RequestChunkChangePacket.ChunkChangeOp.CLAIM) {
+            if (state.operation == Operation.CLAIM) {
                 sendClaimSummary(player, state);
             }
 
@@ -158,7 +185,7 @@ public final class ClaimBatchContext {
     private static void sendUnclaimSummary(ServerPlayer player, BatchState state) {
         int refundPercent = refundPercent();
         if (state.refundCopper > 0) {
-            Component refund = MoneyMessageUtil.formatValue(MoneyUtil.fromCopper(state.refundCopper));
+            Component refund = dev.malik.lcftbhook.util.Money.formatValue(state.refundCopper);
             if (state.unclaimCount == 1) {
                 player.displayClientMessage(
                         Component.translatable("message.lc_ftb_hook.unclaim_refund", refund, refundPercent),
@@ -193,7 +220,7 @@ public final class ClaimBatchContext {
 
     private static void sendClaimSummary(ServerPlayer player, BatchState state) {
         if (state.claimInsufficientCount > 0) {
-            Component unitPrice = MoneyMessageUtil.formatValue(MoneyUtil.fromCopper(state.claimUnitPriceCopper));
+            Component unitPrice = dev.malik.lcftbhook.util.Money.formatValue(state.claimUnitPriceCopper);
             Component balance = state.insufficientBalance == null
                     ? Component.translatable("message.lc_ftb_hook.balance_empty")
                     : state.insufficientBalance;
@@ -221,7 +248,7 @@ public final class ClaimBatchContext {
         }
 
         if (state.claimPaidCopper > 0) {
-            Component spent = MoneyMessageUtil.formatValue(MoneyUtil.fromCopper(state.claimPaidCopper));
+            Component spent = dev.malik.lcftbhook.util.Money.formatValue(state.claimPaidCopper);
             if (claimedCount == 1) {
                 player.displayClientMessage(
                         Component.translatable("message.lc_ftb_hook.claim_paid", spent),
@@ -254,7 +281,7 @@ public final class ClaimBatchContext {
     }
 
     private static final class BatchState {
-        private final RequestChunkChangePacket.ChunkChangeOp operation;
+        private final Operation operation;
         private final UUID playerId;
         private long refundCopper;
         private int unclaimCount;
@@ -268,7 +295,7 @@ public final class ClaimBatchContext {
         private boolean uiSyncNeeded;
         private boolean unsettledBroadcastNeeded;
 
-        private BatchState(RequestChunkChangePacket.ChunkChangeOp operation, UUID playerId) {
+        private BatchState(Operation operation, UUID playerId) {
             this.operation = operation;
             this.playerId = playerId;
         }

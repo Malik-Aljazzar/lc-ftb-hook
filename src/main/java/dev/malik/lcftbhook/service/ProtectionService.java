@@ -1,16 +1,12 @@
 package dev.malik.lcftbhook.service;
 
-import dev.ftb.mods.ftbchunks.api.ChunkTeamData;
-import dev.ftb.mods.ftbchunks.api.FTBChunksAPI;
-import dev.ftb.mods.ftbteams.api.Team;
-import dev.malik.lcftbhook.bank.BankAccountHelper;
 import dev.malik.lcftbhook.data.FtbHookSavedData;
 import dev.malik.lcftbhook.data.TeamPendingState;
-import io.github.lightman314.lightmanscurrency.api.money.bank.IBankAccount;
-import io.github.lightman314.lightmanscurrency.api.money.value.MoneyValue;
+import dev.malik.lcftbhook.port.Backends;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
+import java.util.UUID;
 
 public final class ProtectionService {
     private static final ThreadLocal<Boolean> APPLYING = ThreadLocal.withInitial(() -> false);
@@ -26,51 +22,41 @@ public final class ProtectionService {
         }
     }
 
-    public static boolean canAffordNextPeriod(MinecraftServer server, Team team) {
-        TeamPendingState pendingState = FtbHookSavedData.get(server).getPendingState(team.getTeamId());
-        return canAffordNextPeriod(server, team, pendingState);
+    public static boolean canAffordNextPeriod(MinecraftServer server, UUID teamId) {
+        TeamPendingState pendingState = FtbHookSavedData.get(server).getPendingState(teamId);
+        return canAffordNextPeriod(server, teamId, pendingState);
     }
 
-    public static boolean canAffordNextPeriod(MinecraftServer server, Team team, TeamPendingState pendingState) {
-        ChunkTeamData chunkData = FTBChunksAPI.api().getManager().getOrCreateData(team);
-        int chunkCount = chunkData.getClaimedChunks().size();
-        int forceLoadCount = ProtectionPricing.countEffectiveForceLoads(chunkData, pendingState);
+    public static boolean canAffordNextPeriod(MinecraftServer server, UUID teamId, TeamPendingState pendingState) {
+        int chunkCount = Backends.claim().claimedChunkCount(server, teamId);
+        int forceLoadCount = ProtectionPricing.countEffectiveForceLoads(server, teamId, pendingState);
         if (chunkCount <= 0 && forceLoadCount <= 0) {
             return true;
         }
-        MoneyValue cost = WarService.calculateTotalUpkeepCost(server, team, pendingState);
-        if (cost.isEmpty()) {
-            return true;
-        }
-        IBankAccount account = BankAccountHelper.getAccountForTeam(server, team);
-        return account.getMoneyStorage().containsValue(cost);
+        long costCopper = WarCostService.calculateTotalUpkeepCostCopper(server, teamId, pendingState);
+        return Backends.currency().teamAccount(server, teamId).canAfford(costCopper);
     }
 
-    public static void tryUnlock(MinecraftServer server, Team team) {
+    public static void tryUnlock(MinecraftServer server, UUID teamId) {
         FtbHookSavedData data = FtbHookSavedData.get(server);
-        if (!data.isProtectionLocked(team.getTeamId())) {
+        if (!data.isProtectionLocked(teamId)) {
             return;
         }
-        if (canAffordNextPeriod(server, team)) {
-            data.setProtectionLocked(team.getTeamId(), false);
-            notifyTeam(server, team, "message.lc_ftb_hook.protection_unlocked");
+        if (canAffordNextPeriod(server, teamId)) {
+            data.setProtectionLocked(teamId, false);
+            notifyTeamManagers(server, teamId, Component.translatable("message.lc_ftb_hook.protection_unlocked"));
         }
     }
 
-    public static void notifyTeam(MinecraftServer server, Team team, String messageKey) {
-        Component message = Component.translatable(messageKey);
-        notifyTeam(server, team, message);
-    }
-
-    public static void notifyTeam(MinecraftServer server, Team team, Component message) {
-        for (ServerPlayer member : team.getOnlineMembers()) {
-            member.displayClientMessage(message, false);
-        }
-    }
-
-    public static void notifyTeamManagers(MinecraftServer server, Team team, Component message) {
-        for (ServerPlayer member : team.getOnlineMembers()) {
-            if (!team.isPartyTeam() || team.getRankForPlayer(member.getUUID()).isOfficerOrBetter()) {
+    /**
+     * Officers/owner only - a plain member has no way to act on any upkeep
+     * detail (can't pay it, can't change protections - see RegionService's
+     * own rank checks), so this mod no longer broadcasts these to everyone.
+     */
+    public static void notifyTeamManagers(MinecraftServer server, UUID teamId, Component message) {
+        boolean party = Backends.claim().isPartyTeam(server, teamId);
+        for (ServerPlayer member : Backends.claim().onlineMembers(server, teamId)) {
+            if (!party || Backends.claim().rankOf(server, teamId, member.getUUID()).isOfficerOrBetter()) {
                 member.displayClientMessage(message, false);
             }
         }
