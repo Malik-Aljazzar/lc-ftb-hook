@@ -35,6 +35,7 @@ public final class TeamLifecycleService {
             } catch (IllegalStateException notReadyYet) {
                 // the next real access retries
             }
+            dev.malik.lcftbhook.util.Guard.run("chunk data check at startup", () -> ChunkDataReconciler.reconcile(server));
         }));
     }
 

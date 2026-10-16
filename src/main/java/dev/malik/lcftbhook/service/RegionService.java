@@ -430,7 +430,7 @@ public final class RegionService {
 
         if (teamId != null) {
             TeamPendingState pending = savedData.getPendingState(teamId);
-            TeamPendingState cleared = pending.withoutPendingRegionAssignment(chunkKey);
+            TeamPendingState cleared = pending.withoutChunkReferences(chunkKey);
             if (cleared != pending) {
                 savedData.setPendingState(teamId, cleared);
                 PendingStateSync.syncTeam(server, teamId);

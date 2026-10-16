@@ -2,6 +2,17 @@
 
 All notable changes to LC FTB Hook are documented in this file.
 
+## [4.4.1]
+
+### Fixes
+- Force-loading: a force-load that was still queued (e.g. not yet affordable) when its chunk was unclaimed stayed queued forever - the chunk kept showing as force-loaded on the maps, the upkeep overview kept listing its cost, and every upkeep period retried it and reported it as unaffordable. The only way out was to claim the chunk again and cancel the force-load. Unclaiming now clears everything queued for the chunk. Reported on CurseForge with Open Parties and Claims + Numismatics; FTB Chunks was affected the same way.
+- Claims that disappear or change hands without this mod being told no longer leave data behind. Open Parties and Claims' expiry of inactive players' claims and its `admin clear` / `admin transfer` commands bypass the claim listener, so a chunk's region assignment, marketplace ownership and listing, settlement markers and queued changes stayed with the old team - showing chunks as for sale, privately owned or force-loaded that nobody owns. At server start and before every upkeep period this mod now checks its per-chunk data against the claim mod and drops what belongs to chunks the team no longer owns (logged per team). A privately owned or listed chunk that disappears this way is logged with its owner and price, since no refund is made automatically. If the claim mod reports no claims at all, for any team (most likely it didn't load its data), nothing is touched and an error is logged.
+
+## [4.4.0]
+
+### Compatibility
+- Runs on NeoForge 21.1.197 and newer (was 21.1.250). Nothing in this mod needs a newer NeoForge - the old minimum only kept it out of modpacks that sit on an older build (many large 1.21.1 packs use 21.1.248). 21.1.197 is the minimum of Lightman's Currency; with Create: Numismatics, Numismatics itself needs 21.1.228. Verified by building and running the server on 21.1.197.
+
 ## [4.3.0]
 
 ### Added

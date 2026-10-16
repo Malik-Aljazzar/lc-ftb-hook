@@ -170,4 +170,26 @@ class TeamPendingStateTest {
         assertThrows(UnsupportedOperationException.class,
                 () -> s.pendingWarDeclares().add(UUID.randomUUID()));
     }
+
+    @Test
+    void unclaimedChunk_forgetsItsQueuedForceLoad() {
+        // CurseForge report 2026-10-15 (OPAC + Numismatics): a force-load queued for a chunk that was then
+        // unclaimed stayed queued forever - shown as owed upkeep and retried every period.
+        UUID region = UUID.randomUUID();
+        TeamPendingState s = new TeamPendingState()
+                .withPendingForceLoad(CHUNK_1)
+                .withPendingForceUnload(CHUNK_2)
+                .withPendingRegionAssignment(CHUNK_1, region)
+                .withoutChunkReferences(CHUNK_1);
+        assertFalse(s.isPendingForceLoad(CHUNK_1));
+        assertFalse(s.pendingRegionAssignments().containsKey(CHUNK_1));
+        assertTrue(s.isPendingForceUnload(CHUNK_2), "other chunks are untouched");
+        assertTrue(s.withoutChunkReferences(CHUNK_2).isEmpty());
+    }
+
+    @Test
+    void chunkWithoutQueuedChanges_isLeftAsIs() {
+        TeamPendingState s = new TeamPendingState().withPendingForceLoad(CHUNK_1);
+        assertSame(s, s.withoutChunkReferences(CHUNK_2));
+    }
 }

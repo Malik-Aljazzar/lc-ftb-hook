@@ -742,6 +742,50 @@ public class FtbHookSavedData extends SavedData {
         return all;
     }
 
+    // ---- Per-chunk data as a whole (see ChunkDataReconciliation) ----
+
+    /** Every chunk this team has per-chunk data for: regions, marketplace, settlement markers, queued changes. */
+    public Set<String> trackedChunkKeys(UUID teamId) {
+        TeamLinkEntry entry = teamLinks.get(teamId);
+        if (entry == null) {
+            return Set.of();
+        }
+        Set<String> keys = new HashSet<>(entry.chunkRegions().keySet());
+        keys.addAll(entry.chunkOwnership().keySet());
+        keys.addAll(entry.unsettledChunks());
+        keys.addAll(entry.freshlyClaimedChunks());
+        keys.addAll(entry.pendingState().pendingRegionAssignments().keySet());
+        keys.addAll(entry.pendingState().pendingForceLoads());
+        keys.addAll(entry.pendingState().pendingForceUnloads());
+        return keys;
+    }
+
+    /** Removes everything this team keeps for these chunks (the team no longer owns them). */
+    public void dropChunkData(UUID teamId, Set<String> chunkKeys) {
+        TeamLinkEntry entry = teamLinks.get(teamId);
+        if (entry == null || chunkKeys.isEmpty()) {
+            return;
+        }
+        Map<String, UUID> regions = new HashMap<>(entry.chunkRegions());
+        Map<String, ChunkOwnership> ownership = new HashMap<>(entry.chunkOwnership());
+        Set<String> unsettled = new HashSet<>(entry.unsettledChunks());
+        Set<String> fresh = new HashSet<>(entry.freshlyClaimedChunks());
+        TeamPendingState pending = entry.pendingState();
+        for (String chunkKey : chunkKeys) {
+            regions.remove(chunkKey);
+            ownership.remove(chunkKey);
+            unsettled.remove(chunkKey);
+            fresh.remove(chunkKey);
+            pending = pending.withoutChunkReferences(chunkKey);
+        }
+        teamLinks.put(teamId, entry.withChunkRegions(Map.copyOf(regions))
+                .withChunkOwnership(Map.copyOf(ownership))
+                .withUnsettledChunks(Set.copyOf(unsettled))
+                .withFreshlyClaimedChunks(Set.copyOf(fresh))
+                .withPendingState(pending));
+        setDirty();
+    }
+
     // ---- Unsettled chunks (no protection until the next successful upkeep settlement) ----
 
     public boolean isChunkUnsettled(UUID teamId, String chunkKey) {

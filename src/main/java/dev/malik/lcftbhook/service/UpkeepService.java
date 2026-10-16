@@ -78,6 +78,8 @@ public class UpkeepService {
 
         nextUpkeepTick = server.getTickCount() + periodTicks;
 
+        // Drop data of chunks that left a team behind this mod's back before anything is billed or retried.
+        dev.malik.lcftbhook.util.Guard.run("chunk data check", () -> ChunkDataReconciler.reconcile(server));
         for (UUID teamId : TeamCatalog.activeTeams(server)) {
             try {
                 processTeamUpkeep(server, teamId);

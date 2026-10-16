@@ -176,6 +176,17 @@ public final class TeamPendingState {
         return copy;
     }
 
+    /**
+     * Forgets everything queued for one chunk (region assignment, force-load,
+     * force-unload) - for when the chunk stops belonging to the team. A queued
+     * force-load left behind used to stay forever: shown as owed upkeep and as
+     * force-loaded on the maps, and retried (and reported unaffordable) every
+     * period, until the player re-claimed the chunk and cancelled it.
+     */
+    public TeamPendingState withoutChunkReferences(String chunkKey) {
+        return withoutPendingRegionAssignment(chunkKey).withoutPendingForceLoad(chunkKey).withoutPendingForceUnload(chunkKey);
+    }
+
     public TeamPendingState withPendingWarDeclare(UUID targetTeamId) {
         TeamPendingState copy = copy();
         copy.pendingWarDeclares.add(targetTeamId);

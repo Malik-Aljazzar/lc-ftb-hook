@@ -47,7 +47,7 @@ FORBIDDEN = [
 ]
 # Reported, but expected after damage (e.g. the broken 4.0.0 fixture).
 NOTEWORTHY = [r'Repaired hook data', r'Reconcile: purged', r'Re-linked existing LC team',
-              r'Kept unlinked LC team', r'Repaired FTB party', r'No Lightman.s Currency team account for party',
+              r'Kept unlinked LC team', r'Repaired FTB party', r"Removed this mod's data", r'Chunk data check', r"left this mod's knowledge", r'No Lightman.s Currency team account for party',
               r'is linked to \d+ parties', r'kept it with its own party', r"can't be told whose it is", r'Created LC team', r'LC team \d+ was linked to more than one party']
 
 
@@ -66,6 +66,36 @@ def repairable_ownerless(snbt):
     return owner is not None and owner.group(1) == NIL_UUID and len(re.findall(r'[0-9a-f-]{36}: "owner"', snbt)) == 1
 
 
+def owned_chunks(world):
+    """Chunk keys (ChunkPosKey format) per FTB team id, from FTB Chunks' own files."""
+    owned = {}
+    for f in (world / 'ftbchunks').glob('*.snbt'):
+        for dim, body in re.findall(r'"([a-z0-9_:]+)": \[(.*?)\]', f.read_text(encoding='utf-8'), re.S):
+            for x, z in re.findall(r'x: (-?\d+), z: (-?\d+)', body):
+                owned.setdefault(f.stem, set()).add('%s#%s#%s' % (dim, x, z))
+    return owned
+
+
+def stale_chunk_data(world, hook_entries):
+    """Per-chunk data of this mod for chunks the team doesn't own (must be none after a start)."""
+    owned = owned_chunks(world)
+    known = {f.stem for f in (world / 'ftbteams').glob('*/*.snbt')}
+    stale = {}
+    for entry in hook_entries:
+        team = uuid_from_ints(entry['TeamId'])
+        if team not in known:
+            continue
+        keys = set()
+        for name in ('UnsettledChunks', 'FreshlyClaimedChunks', 'PendingForceLoads', 'PendingForceUnloads'):
+            keys |= set(entry.get(name, []))
+        for name in ('ChunkRegions', 'ChunkOwnership', 'PendingRegionAssignments'):
+            keys |= set(entry.get(name, {}).keys())
+        keys -= owned.get(team, set())
+        if keys:
+            stale[team] = keys
+    return stale
+
+
 def snapshot(world):
     snap = {'players': len(list((world / 'ftbteams' / 'player').glob('*.snbt'))),
             'parties': len(list((world / 'ftbteams' / 'party').glob('*.snbt'))),
@@ -78,9 +108,12 @@ def snapshot(world):
             'repairable_ownerless': {f.stem for f in (world / 'ftbteams' / 'party').glob('*.snbt')
                                      if repairable_ownerless(f.read_text(encoding='utf-8'))}}
     hook = world / 'data' / 'lc_ftb_hook_team_accounts.dat'
+    snap['stale_chunk_data'] = {}
     if hook.exists():
-        for entry in load(hook)['data'].get('Teams', []):
+        entries = load(hook)['data'].get('Teams', [])
+        for entry in entries:
             snap['hook_teams'][uuid_from_ints(entry['TeamId'])] = entry.get('LcTeamId', -1)
+        snap['stale_chunk_data'] = stale_chunk_data(world, entries)
     lc = world / 'data' / 'lightmanscurrency_team_data.dat'
     if lc.exists():
         for team in load(lc)['data'].get('Teams', []):
@@ -90,33 +123,38 @@ def snapshot(world):
     return snap
 
 
+def wait_until_started(proc, started):
+    """None once the server is up (plus time for the startup checks), else why it isn't."""
+    while time.time() - started < 600:
+        if proc.poll() is not None:
+            return 'server exited during startup'
+        if LOG.exists() and LOG.stat().st_mtime > started:
+            text = LOG.read_text(encoding='utf-8', errors='replace')
+            if 'Crash report' in text:
+                return None  # reported through the FORBIDDEN log check
+            if re.search(r'Done \(', text):
+                time.sleep(45)  # startup reconcile + deferred LC setup
+                return None
+        time.sleep(2)
+    return 'server did not start within 10 minutes'
+
+
 def run_server():
+    """Starts the dev server, waits for it, and always stops it via RCON (never a hard kill)."""
     started = time.time()
-    log_out = open(ROOT / 'run' / 'migration-test-server.out', 'w', encoding='utf-8', errors='replace')
-    proc = subprocess.Popen(['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
-                             str(ROOT / 'scripts' / 'run-server.ps1')], cwd=ROOT, stdout=log_out, stderr=subprocess.STDOUT)
-    try:
-        while time.time() - started < 600:
-            if proc.poll() is not None:
-                return 'server exited during startup'
-            if LOG.exists() and LOG.stat().st_mtime > started:
-                text = LOG.read_text(encoding='utf-8', errors='replace')
-                if 'Crash report' in text:
-                    break
-                if re.search(r'Done \(', text):
-                    time.sleep(45)  # startup reconcile + deferred LC setup
-                    break
-            time.sleep(2)
-        else:
-            return 'server did not start within 10 minutes'
-    finally:
-        subprocess.run([sys.executable, str(ROOT / 'scripts' / 'dev' / 'rcon.py'), '--port', RCON_PORT, 'stop'],
-                       cwd=ROOT, capture_output=True)
+    with open(ROOT / 'run' / 'migration-test-server.out', 'w', encoding='utf-8', errors='replace') as log_out:
+        proc = subprocess.Popen(['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
+                                 str(ROOT / 'scripts' / 'run-server.ps1')], cwd=ROOT, stdout=log_out, stderr=subprocess.STDOUT)
+        try:
+            error = wait_until_started(proc, started)
+        finally:
+            subprocess.run([sys.executable, str(ROOT / 'scripts' / 'dev' / 'rcon.py'), '--port', RCON_PORT, 'stop'],
+                           cwd=ROOT, capture_output=True)
         try:
             proc.wait(timeout=180)
         except subprocess.TimeoutExpired:
             return 'server did not stop within 3 minutes - stop it via RCON before re-running'
-    return None
+    return error
 
 
 def team_count(snap):
@@ -151,6 +189,11 @@ def check(name, before, after, log_text):
         problems.append('parties still without owner although their ranks name one: %s' % sorted(after['repairable_ownerless']))
     if after['lc_nil_owners'] - before['lc_nil_owners']:
         problems.append('LC teams newly given the nil owner: %s' % sorted(after['lc_nil_owners'] - before['lc_nil_owners']))
+    stale_before = sum(len(v) for v in before['stale_chunk_data'].values())
+    if stale_before:
+        notes.append('%d chunk(s) with data of a team that does not own them before the start' % stale_before)
+    for team, keys in after['stale_chunk_data'].items():
+        problems.append('team %s still has data for %d chunk(s) it does not own: %s' % (team, len(keys), sorted(keys)[:5]))
     for team_id in before['hook_teams']:
         if team_id not in after['hook_teams'] and team_id in before['team_files']:
             problems.append('hook data of existing team %s was purged' % team_id)
