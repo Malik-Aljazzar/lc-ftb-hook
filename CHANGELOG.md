@@ -4,6 +4,9 @@ All notable changes to LC FTB Hook are documented in this file.
 
 ## [4.4.1]
 
+### Compatibility
+- Tested against Open Parties and Claims 0.33.0 (older supported versions keep working). OPAC's new "claiming paused" / "new force-loads paused" permissions and config options simply refuse the action before this mod charges anything; OPAC's new automatic sub-claim names don't show up on region claims, which keep their team/region name.
+
 ### Fixes
 - Force-loading: a force-load that was still queued (e.g. not yet affordable) when its chunk was unclaimed stayed queued forever - the chunk kept showing as force-loaded on the maps, the upkeep overview kept listing its cost, and every upkeep period retried it and reported it as unaffordable. The only way out was to claim the chunk again and cancel the force-load. Unclaiming now clears everything queued for the chunk. Reported on CurseForge with Open Parties and Claims + Numismatics; FTB Chunks was affected the same way.
 - Claims that disappear or change hands without this mod being told no longer leave data behind. Open Parties and Claims' expiry of inactive players' claims and its `admin clear` / `admin transfer` commands bypass the claim listener, so a chunk's region assignment, marketplace ownership and listing, settlement markers and queued changes stayed with the old team - showing chunks as for sale, privately owned or force-loaded that nobody owns. At server start and before every upkeep period this mod now checks its per-chunk data against the claim mod and drops what belongs to chunks the team no longer owns (logged per team). A privately owned or listed chunk that disappears this way is logged with its owner and price, since no refund is made automatically. If the claim mod reports no claims at all, for any team (most likely it didn't load its data), nothing is touched and an error is logged.

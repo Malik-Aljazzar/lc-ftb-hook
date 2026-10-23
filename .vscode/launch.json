@@ -4,7 +4,7 @@
     {
       "type": "java",
       "request": "launch",
-      "name": "Client 1",
+      "name": "Client ftb-lc 1",
       "presentation": {
         "group": "Mod Development - lc-ftb-hook",
         "order": 0
@@ -18,7 +18,7 @@
         "@C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\build\\moddev\\clientRunVmArgs.txt",
         "-Dfml.modFolders\u003dlc_ftb_hook%%C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\bin\\main"
       ],
-      "cwd": "${workspaceFolder}\\run-client1",
+      "cwd": "${workspaceFolder}\\clients\\ftb-lc-1",
       "env": {},
       "console": "internalConsole",
       "shortenCommandLine": "none"
@@ -26,7 +26,7 @@
     {
       "type": "java",
       "request": "launch",
-      "name": "Client 2",
+      "name": "Client ftb-lc 2",
       "presentation": {
         "group": "Mod Development - lc-ftb-hook",
         "order": 1
@@ -40,7 +40,7 @@
         "@C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\build\\moddev\\client2RunVmArgs.txt",
         "-Dfml.modFolders\u003dlc_ftb_hook%%C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\bin\\main"
       ],
-      "cwd": "${workspaceFolder}\\run-client2",
+      "cwd": "${workspaceFolder}\\clients\\ftb-lc-2",
       "env": {},
       "console": "internalConsole",
       "shortenCommandLine": "none"
@@ -48,10 +48,186 @@
     {
       "type": "java",
       "request": "launch",
-      "name": "Server",
+      "name": "Client ftb-lc 3",
       "presentation": {
         "group": "Mod Development - lc-ftb-hook",
         "order": 2
+      },
+      "projectName": "lc-ftb-hook",
+      "mainClass": "net.neoforged.devlaunch.Main",
+      "args": [
+        "@C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\build\\moddev\\client3RunProgramArgs.txt"
+      ],
+      "vmArgs": [
+        "@C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\build\\moddev\\client3RunVmArgs.txt",
+        "-Dfml.modFolders\u003dlc_ftb_hook%%C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\bin\\main"
+      ],
+      "cwd": "${workspaceFolder}\\clients\\ftb-lc-3",
+      "env": {},
+      "console": "internalConsole",
+      "shortenCommandLine": "none"
+    },
+    {
+      "type": "java",
+      "request": "launch",
+      "name": "Client ftb-num 1",
+      "presentation": {
+        "group": "Mod Development - lc-ftb-hook",
+        "order": 3
+      },
+      "projectName": "lc-ftb-hook",
+      "mainClass": "net.neoforged.devlaunch.Main",
+      "args": [
+        "@C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\build\\moddev\\clientFtbNum1RunProgramArgs.txt"
+      ],
+      "vmArgs": [
+        "@C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\build\\moddev\\clientFtbNum1RunVmArgs.txt",
+        "-Dfml.modFolders\u003dlc_ftb_hook%%C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\bin\\main"
+      ],
+      "cwd": "${workspaceFolder}\\clients\\ftb-num-1",
+      "env": {},
+      "console": "internalConsole",
+      "shortenCommandLine": "none"
+    },
+    {
+      "type": "java",
+      "request": "launch",
+      "name": "Client ftb-num 2",
+      "presentation": {
+        "group": "Mod Development - lc-ftb-hook",
+        "order": 4
+      },
+      "projectName": "lc-ftb-hook",
+      "mainClass": "net.neoforged.devlaunch.Main",
+      "args": [
+        "@C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\build\\moddev\\clientFtbNum2RunProgramArgs.txt"
+      ],
+      "vmArgs": [
+        "@C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\build\\moddev\\clientFtbNum2RunVmArgs.txt",
+        "-Dfml.modFolders\u003dlc_ftb_hook%%C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\bin\\main"
+      ],
+      "cwd": "${workspaceFolder}\\clients\\ftb-num-2",
+      "env": {},
+      "console": "internalConsole",
+      "shortenCommandLine": "none"
+    },
+    {
+      "type": "java",
+      "request": "launch",
+      "name": "Client opac-num 1",
+      "presentation": {
+        "group": "Mod Development - lc-ftb-hook",
+        "order": 5
+      },
+      "projectName": "lc-ftb-hook",
+      "mainClass": "net.neoforged.devlaunch.Main",
+      "args": [
+        "@C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\build\\moddev\\clientOpac1RunProgramArgs.txt"
+      ],
+      "vmArgs": [
+        "@C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\build\\moddev\\clientOpac1RunVmArgs.txt",
+        "-Dfml.modFolders\u003dlc_ftb_hook%%C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\bin\\main"
+      ],
+      "cwd": "${workspaceFolder}\\clients\\opac-num-1",
+      "env": {},
+      "console": "internalConsole",
+      "shortenCommandLine": "none"
+    },
+    {
+      "type": "java",
+      "request": "launch",
+      "name": "Client opac-num 2",
+      "presentation": {
+        "group": "Mod Development - lc-ftb-hook",
+        "order": 6
+      },
+      "projectName": "lc-ftb-hook",
+      "mainClass": "net.neoforged.devlaunch.Main",
+      "args": [
+        "@C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\build\\moddev\\clientOpac2RunProgramArgs.txt"
+      ],
+      "vmArgs": [
+        "@C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\build\\moddev\\clientOpac2RunVmArgs.txt",
+        "-Dfml.modFolders\u003dlc_ftb_hook%%C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\bin\\main"
+      ],
+      "cwd": "${workspaceFolder}\\clients\\opac-num-2",
+      "env": {},
+      "console": "internalConsole",
+      "shortenCommandLine": "none"
+    },
+    {
+      "type": "java",
+      "request": "launch",
+      "name": "Client opac-num 3",
+      "presentation": {
+        "group": "Mod Development - lc-ftb-hook",
+        "order": 7
+      },
+      "projectName": "lc-ftb-hook",
+      "mainClass": "net.neoforged.devlaunch.Main",
+      "args": [
+        "@C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\build\\moddev\\clientOpac3RunProgramArgs.txt"
+      ],
+      "vmArgs": [
+        "@C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\build\\moddev\\clientOpac3RunVmArgs.txt",
+        "-Dfml.modFolders\u003dlc_ftb_hook%%C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\bin\\main"
+      ],
+      "cwd": "${workspaceFolder}\\clients\\opac-num-3",
+      "env": {},
+      "console": "internalConsole",
+      "shortenCommandLine": "none"
+    },
+    {
+      "type": "java",
+      "request": "launch",
+      "name": "Client opac-lc 1",
+      "presentation": {
+        "group": "Mod Development - lc-ftb-hook",
+        "order": 8
+      },
+      "projectName": "lc-ftb-hook",
+      "mainClass": "net.neoforged.devlaunch.Main",
+      "args": [
+        "@C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\build\\moddev\\clientOpacLc1RunProgramArgs.txt"
+      ],
+      "vmArgs": [
+        "@C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\build\\moddev\\clientOpacLc1RunVmArgs.txt",
+        "-Dfml.modFolders\u003dlc_ftb_hook%%C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\bin\\main"
+      ],
+      "cwd": "${workspaceFolder}\\clients\\opac-lc-1",
+      "env": {},
+      "console": "internalConsole",
+      "shortenCommandLine": "none"
+    },
+    {
+      "type": "java",
+      "request": "launch",
+      "name": "Client opac-lc 2",
+      "presentation": {
+        "group": "Mod Development - lc-ftb-hook",
+        "order": 9
+      },
+      "projectName": "lc-ftb-hook",
+      "mainClass": "net.neoforged.devlaunch.Main",
+      "args": [
+        "@C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\build\\moddev\\clientOpacLc2RunProgramArgs.txt"
+      ],
+      "vmArgs": [
+        "@C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\build\\moddev\\clientOpacLc2RunVmArgs.txt",
+        "-Dfml.modFolders\u003dlc_ftb_hook%%C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\bin\\main"
+      ],
+      "cwd": "${workspaceFolder}\\clients\\opac-lc-2",
+      "env": {},
+      "console": "internalConsole",
+      "shortenCommandLine": "none"
+    },
+    {
+      "type": "java",
+      "request": "launch",
+      "name": "Server (ftb-lc)",
+      "presentation": {
+        "group": "Mod Development - lc-ftb-hook",
+        "order": 10
       },
       "projectName": "lc-ftb-hook",
       "mainClass": "net.neoforged.devlaunch.Main",
@@ -63,6 +239,72 @@
         "-Dfml.modFolders\u003dlc_ftb_hook%%C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\bin\\main"
       ],
       "cwd": "${workspaceFolder}\\run",
+      "env": {},
+      "console": "internalConsole",
+      "shortenCommandLine": "none"
+    },
+    {
+      "type": "java",
+      "request": "launch",
+      "name": "Server (ftb-num)",
+      "presentation": {
+        "group": "Mod Development - lc-ftb-hook",
+        "order": 11
+      },
+      "projectName": "lc-ftb-hook",
+      "mainClass": "net.neoforged.devlaunch.Main",
+      "args": [
+        "@C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\build\\moddev\\serverFtbNumRunProgramArgs.txt"
+      ],
+      "vmArgs": [
+        "@C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\build\\moddev\\serverFtbNumRunVmArgs.txt",
+        "-Dfml.modFolders\u003dlc_ftb_hook%%C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\bin\\main"
+      ],
+      "cwd": "${workspaceFolder}\\run-ftb-num-server",
+      "env": {},
+      "console": "internalConsole",
+      "shortenCommandLine": "none"
+    },
+    {
+      "type": "java",
+      "request": "launch",
+      "name": "Server (opac-num)",
+      "presentation": {
+        "group": "Mod Development - lc-ftb-hook",
+        "order": 12
+      },
+      "projectName": "lc-ftb-hook",
+      "mainClass": "net.neoforged.devlaunch.Main",
+      "args": [
+        "@C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\build\\moddev\\serverOpacRunProgramArgs.txt"
+      ],
+      "vmArgs": [
+        "@C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\build\\moddev\\serverOpacRunVmArgs.txt",
+        "-Dfml.modFolders\u003dlc_ftb_hook%%C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\bin\\main"
+      ],
+      "cwd": "${workspaceFolder}\\run-opac-server",
+      "env": {},
+      "console": "internalConsole",
+      "shortenCommandLine": "none"
+    },
+    {
+      "type": "java",
+      "request": "launch",
+      "name": "Server (opac-lc)",
+      "presentation": {
+        "group": "Mod Development - lc-ftb-hook",
+        "order": 13
+      },
+      "projectName": "lc-ftb-hook",
+      "mainClass": "net.neoforged.devlaunch.Main",
+      "args": [
+        "@C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\build\\moddev\\serverOpacLcRunProgramArgs.txt"
+      ],
+      "vmArgs": [
+        "@C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\build\\moddev\\serverOpacLcRunVmArgs.txt",
+        "-Dfml.modFolders\u003dlc_ftb_hook%%C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\bin\\main"
+      ],
+      "cwd": "${workspaceFolder}\\run-opac-lc-server",
       "env": {},
       "console": "internalConsole",
       "shortenCommandLine": "none"
