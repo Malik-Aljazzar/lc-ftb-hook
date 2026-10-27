@@ -26,7 +26,7 @@ public class UpkeepService {
         forceNextTick = true;
     }
 
-    /** Minutes until the next settlement pass, or -1 if not yet known (server just started). Pauses while no players are online, same as the settlement loop itself. */
+    /** Minutes until the next settlement pass, or -1 if not yet known (server just started). Pauses while no players are online, same as the settlement loop itself, unless settleWhileEmpty is set. */
     public static int minutesUntilNextUpkeep(MinecraftServer server) {
         if (nextUpkeepTick < 0L) {
             return -1;
@@ -67,7 +67,8 @@ public class UpkeepService {
             nextUpkeepTick = server.getTickCount();
         }
 
-        if (server.getPlayerList().getPlayerCount() <= 0) {
+        if (!LCFtbHookConfig.SERVER.settleWhileEmpty.get()
+                && server.getPlayerList().getPlayerCount() <= 0) {
             nextUpkeepTick++;
             return;
         }
