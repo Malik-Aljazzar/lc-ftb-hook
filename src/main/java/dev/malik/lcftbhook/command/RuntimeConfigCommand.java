@@ -147,6 +147,7 @@ public final class RuntimeConfigCommand {
         registerBoolean(map, "warEnabled", c.warEnabled,
                 enabled -> dev.malik.lcftbhook.service.WarService.setWarSystemEnabled(
                         net.neoforged.neoforge.server.ServerLifecycleHooks.getCurrentServer(), enabled));
+        registerBoolean(map, "settleWhileEmpty", c.settleWhileEmpty);
 
         // TreeMap sorted the registration above alphabetically for iteration
         // order only - return as a LinkedHashMap so callers get a stable,

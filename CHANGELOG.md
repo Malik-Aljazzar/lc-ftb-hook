@@ -4,6 +4,9 @@ All notable changes to LC FTB Hook are documented in this file.
 
 ## [4.4.1]
 
+### Added
+- An opt-in `settleWhileEmpty` config key (default false) so the upkeep settlement clock keeps ticking while the server has zero players online. With it true, force-loads and protections are charged on schedule around the clock, which is what `forceLoadUpkeepMode=ALWAYS` and `protectionUpkeepMode=HEAVY` already advertise but cannot deliver while empty. Leave it false and nothing changes for existing servers. Team notifications (restored, suspended, unaffordable) only ever reach online members, so dismantles that happen while nobody is on show up in the upkeep overview but are not messaged. Reported on CurseForge by a server running forceLoadUpkeepMode=ALWAYS who found paid force-loads were never billed across overnight empty stretches.
+
 ### Compatibility
 - Tested against Open Parties and Claims 0.33.0 (older supported versions keep working). OPAC's new "claiming paused" / "new force-loads paused" permissions and config options simply refuse the action before this mod charges anything; OPAC's new automatic sub-claim names don't show up on region claims, which keep their team/region name.
 

@@ -27,6 +27,7 @@ public final class LCFtbHookConfig {
         public final ModConfigSpec.DoubleValue unclaimRefundRatio;
         public final ModConfigSpec.LongValue forceLoadUpkeepPrice;
         public final ModConfigSpec.IntValue upkeepPeriodMinutes;
+        public final ModConfigSpec.BooleanValue settleWhileEmpty;
         public final ModConfigSpec.EnumValue<ForceLoadUpkeepMode> forceLoadUpkeepMode;
         public final ModConfigSpec.EnumValue<ProtectionUpkeepMode> protectionUpkeepMode;
         public final ModConfigSpec.DoubleValue warCostMultiplier;
@@ -135,6 +136,20 @@ public final class LCFtbHookConfig {
             upkeepPeriodMinutes = builder
                     .comment("How often upkeep is charged, in real-time minutes")
                     .defineInRange("upkeepPeriodMinutes", 5, 1, 10080);
+
+            settleWhileEmpty = builder
+                    .comment(
+                            "Run upkeep settlement passes even when no players are online.",
+                            "false (default) = the settlement clock pauses while the server is empty",
+                            "  (current behavior): nothing is charged or dismantled until someone logs in,",
+                            "  and force-loads/protections run unbilled in the meantime.",
+                            "true = settlement runs on schedule around the clock. Set this if you rely on",
+                            "  forceLoadUpkeepMode=ALWAYS or protectionUpkeepMode=HEAVY - those modes cannot",
+                            "  charge while the server is empty without it. Team notifications (restored,",
+                            "  suspended, unaffordable) only ever reach online members, so dismantles that",
+                            "  happen while nobody is on are visible in the upkeep overview but not messaged."
+                    )
+                    .define("settleWhileEmpty", false);
 
             lockClaimVisibilityPublic = builder
                     .comment(
