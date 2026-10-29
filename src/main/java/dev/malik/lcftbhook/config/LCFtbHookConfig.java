@@ -24,6 +24,7 @@ public final class LCFtbHookConfig {
         public final ModConfigSpec.IntValue claimIncrementSize;
         public final ModConfigSpec.DoubleValue claimPriceGrowthPercent;
         public final ModConfigSpec.IntValue freeChunks;
+        public final ModConfigSpec.BooleanValue freeChunksExemptFromUpkeep;
         public final ModConfigSpec.DoubleValue unclaimRefundRatio;
         public final ModConfigSpec.LongValue forceLoadUpkeepPrice;
         public final ModConfigSpec.IntValue upkeepPeriodMinutes;
@@ -124,8 +125,20 @@ public final class LCFtbHookConfig {
                     .defineInRange("claimPriceGrowthPercent", 0.05D, 0.0D, 1.0D);
 
             freeChunks = builder
-                    .comment("The first N claimed chunks per team or player are free to claim and exempt from protection upkeep")
+                    .comment(
+                            "The first N claimed chunks per team or player are free to claim (and no refund is paid when",
+                            "unclaiming them). Whether they also skip protection upkeep: see freeChunksExemptFromUpkeep."
+                    )
                     .defineInRange("freeChunks", 0, 0, Integer.MAX_VALUE);
+
+            freeChunksExemptFromUpkeep = builder
+                    .comment(
+                            "Whether the freeChunks above are also exempt from protection upkeep. false (default): free chunks",
+                            "only cost nothing to claim - every claimed chunk pays protection upkeep. true: the first",
+                            "freeChunks chunks are also left out of protection upkeep (taken from the team's most expensive",
+                            "regions first). Force-load upkeep is never affected."
+                    )
+                    .define("freeChunksExemptFromUpkeep", false);
 
             unclaimRefundRatio = builder
                     .comment("Fraction of the claim price refunded when unclaiming a chunk (0 = none, 1 = full refund, 0.8 = 80%)")

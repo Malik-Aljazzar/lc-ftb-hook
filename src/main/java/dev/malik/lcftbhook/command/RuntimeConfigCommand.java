@@ -131,7 +131,10 @@ public final class RuntimeConfigCommand {
         registerLong(map, "claimIncrementPrice", c.claimIncrementPrice);
         registerInt(map, "claimIncrementSize", c.claimIncrementSize);
         registerDouble(map, "claimPriceGrowthPercent", c.claimPriceGrowthPercent);
-        registerInt(map, "freeChunks", c.freeChunks);
+        Runnable billableChunksChanged = () -> dev.malik.lcftbhook.service.UpkeepPricingChange
+                .onBillableChunksChanged(net.neoforged.neoforge.server.ServerLifecycleHooks.getCurrentServer());
+        registerInt(map, "freeChunks", c.freeChunks, billableChunksChanged);
+        registerBoolean(map, "freeChunksExemptFromUpkeep", c.freeChunksExemptFromUpkeep, enabled -> billableChunksChanged.run());
         registerDouble(map, "unclaimRefundRatio", c.unclaimRefundRatio);
         registerLong(map, "forceLoadUpkeepPrice", c.forceLoadUpkeepPrice);
         registerInt(map, "upkeepPeriodMinutes", c.upkeepPeriodMinutes);
@@ -179,6 +182,12 @@ public final class RuntimeConfigCommand {
     }
 
     private static void registerInt(Map<String, Entry> map, String key, ModConfigSpec.IntValue value) {
+        registerInt(map, key, value, null);
+    }
+
+    private static void registerInt(
+            Map<String, Entry> map, String key, ModConfigSpec.IntValue value, @javax.annotation.Nullable Runnable onChanged
+    ) {
         map.put(key, new Entry(
                 () -> String.valueOf(value.get()),
                 input -> {
@@ -193,6 +202,9 @@ public final class RuntimeConfigCommand {
                     }
                     value.set(parsed);
                     value.save();
+                    if (onChanged != null) {
+                        onChanged.run();
+                    }
                     return null;
                 }
         ));

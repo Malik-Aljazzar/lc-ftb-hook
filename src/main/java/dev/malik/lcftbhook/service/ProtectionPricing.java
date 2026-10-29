@@ -20,8 +20,9 @@ import java.util.UUID;
 /**
  * Region-based protection billing. Every region (including the auto-created
  * Default) prices its own non-minimum protection properties per chunk it
- * contains; the team-wide free chunk allowance is consumed against the
- * highest price-per-chunk region(s) first.
+ * contains. Only when freeChunksExemptFromUpkeep is on, the team-wide free
+ * chunk allowance is consumed against the highest price-per-chunk region(s)
+ * first; otherwise every claimed chunk is billable.
  */
 public final class ProtectionPricing {
     private ProtectionPricing() {
@@ -54,7 +55,7 @@ public final class ProtectionPricing {
         byPriceDesc.sort(Comparator.comparingLong((UUID id) ->
                 regionBasePrice(savedData, teamId, id, pendingState)).reversed());
 
-        int remainingAllowance = FreeChunkAllowance.allowance();
+        int remainingAllowance = FreeChunkAllowance.upkeepAllowance();
         Map<UUID, RegionChunkCount> perRegion = new LinkedHashMap<>();
         for (UUID regionId : byPriceDesc) {
             int count = raw.get(regionId);

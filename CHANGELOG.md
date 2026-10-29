@@ -2,6 +2,12 @@
 
 All notable changes to LC FTB Hook are documented in this file.
 
+## [4.5.1]
+
+### Changed
+- Free chunks (`freeChunks`) are now only free to claim - they pay protection upkeep like every other chunk. So far the first `freeChunks` chunks of a team were also left out of protection upkeep, which made e.g. a protection on a 20-chunk region with 5 free chunks bill only 15. Server owners who want the old behavior back can set the new server setting `freeChunksExemptFromUpkeep` to `true` (also with `/lc_ftb_hook config set`). Force-load upkeep is not affected either way.
+- Changing `freeChunks` or `freeChunksExemptFromUpkeep` with `/lc_ftb_hook config set` now updates the upkeep shown in the region screens right away instead of on the next refresh.
+
 ## [4.5.0]
 
 ### Added
