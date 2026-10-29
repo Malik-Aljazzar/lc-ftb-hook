@@ -8,6 +8,7 @@
     "ClaimedChunkManagerImplDeleteTeamMixin",
     "ClaimedChunkManagerProtectionMixin",
     "ClaimedChunkRegionProtectionMixin",
+    "FTBChunksForceLoadTicketMixin",
     "FTBChunksPlayerJoinedPartyMixin",
     "FTBChunksPvPMixin",
     "PartyTeamOwnerAccessor",

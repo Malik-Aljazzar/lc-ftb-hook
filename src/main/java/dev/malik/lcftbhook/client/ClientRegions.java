@@ -18,6 +18,7 @@ public final class ClientRegions {
     private static Map<UUID, Integer> forceLoadCounts = Map.of();
     private static Map<UUID, Long> forceLoadCurrentUpkeepCopper = Map.of();
     private static Map<UUID, Long> forceLoadPendingUpkeepCopper = Map.of();
+    private static List<dev.malik.lcftbhook.data.ForceLoadMode> enabledForceLoadModes = List.of();
 
     private ClientRegions() {
     }
@@ -31,7 +32,8 @@ public final class ClientRegions {
             Map<UUID, Long> pendingUpkeep,
             Map<UUID, Integer> forceLoadCountsIn,
             Map<UUID, Long> forceLoadCurrentUpkeepIn,
-            Map<UUID, Long> forceLoadPendingUpkeepIn
+            Map<UUID, Long> forceLoadPendingUpkeepIn,
+            List<dev.malik.lcftbhook.data.ForceLoadMode> enabledForceLoadModesIn
     ) {
         regionOrder = List.copyOf(order);
         regions = Map.copyOf(updated);
@@ -42,6 +44,12 @@ public final class ClientRegions {
         forceLoadCounts = Map.copyOf(forceLoadCountsIn);
         forceLoadCurrentUpkeepCopper = Map.copyOf(forceLoadCurrentUpkeepIn);
         forceLoadPendingUpkeepCopper = Map.copyOf(forceLoadPendingUpkeepIn);
+        enabledForceLoadModes = List.copyOf(enabledForceLoadModesIn);
+    }
+
+    /** The force-load modes the server lets regions pick, cheapest first. */
+    public static List<dev.malik.lcftbhook.data.ForceLoadMode> enabledForceLoadModes() {
+        return enabledForceLoadModes;
     }
 
     public static List<UUID> regionOrder() {

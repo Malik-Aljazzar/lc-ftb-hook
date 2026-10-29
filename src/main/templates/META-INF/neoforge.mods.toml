@@ -84,6 +84,12 @@ config="lc_ftb_hook_ftb.mixins.json"
 [[mixins]]
 config="lc_ftb_hook_opac.mixins.json"
 
+# Create: Numismatics - the single optional hook letting ops open the server
+# account at a Bank Terminal. Skipped (BackendMixinPlugin) when Numismatics
+# isn't installed; soft-fail if its target ever changes.
+[[mixins]]
+config="lc_ftb_hook_numismatics.mixins.json"
+
 # Optional (required=false in the config itself): only takes effect when
 # Xaero's World Map + the FTB Chunks compat addon are both present. Safe to
 # load unconditionally - Mixin skips targets that don't resolve.

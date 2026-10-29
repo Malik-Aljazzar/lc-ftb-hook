@@ -2,6 +2,38 @@
 
 All notable changes to LC FTB Hook are documented in this file.
 
+## [4.5.0]
+
+### Added
+- Force-load mode per region. In a region's settings, the team picks when that region's force-loaded chunks are kept loaded - and they're charged exactly then:
+  - **Team online**: only while someone from the team is online (what force-loads did by default so far).
+  - **Anyone online**: while at least one player is online anywhere on the server.
+  - **Always**: always loaded and charged every upkeep period, also while nobody is on the server.
+  The change takes effect immediately. A region's force-loads are charged for every upkeep period in which they were loaded at any point, so switching to a cheaper mode or logging out just before the upkeep runs doesn't make them free.
+- This mod now decides when force-loaded chunks are loaded, not the claim mod: FTB Chunks' `force_load_mode` / offline force-loading and Open Parties and Claims' offline force-loading are ignored while this mod charges the upkeep. Which chunks are force-loaded, the limits and the claim screens stay with the claim mod.
+- New server settings `forceLoadModeAlwaysEnabled`, `forceLoadModeAnyPlayerEnabled` and `forceLoadModeTeamOnlineEnabled` (all `true` by default, also changeable with `/lc_ftb_hook config set`) choose which modes teams can pick; a disabled mode isn't offered. A region whose mode gets disabled falls back to the next cheaper allowed mode (Always → Anyone online → Team online), so nobody pays more than they chose; if there is none, its force-loads are switched off (not loaded, not charged) until the team picks an allowed mode. New force-loads can't be requested in such a region.
+
+### Changed
+- The server-wide `forceLoadUpkeepMode` setting is replaced by the per-region mode. On the first start after the update, every existing region takes over what it said (`ALWAYS` → Always, `DEFAULT` → Team online), so nothing changes on the update itself. The setting has no effect after that.
+- Team online: force-loads used to be charged only if a team member happened to be online at the very moment the upkeep ran. Now they're charged for every period in which a team member was online (and the chunks were loaded) at some point. Teams that log out just before the upkeep runs pay a little more often than before.
+
+### Fixes
+- Force-loads on Always and `protectionUpkeepMode=HEAVY` now really charge while nobody is online (GitHub issue #7, reported by deveyus). Upkeep stopped completely while the server was empty, so these charged nothing overnight even though they are meant to charge regardless of who is online. Upkeep now keeps running on an empty server whenever something is charged then (and, if a team can't pay, its force-loads and protections are dismantled around the clock); teams with nothing charged while empty are left alone until players are back, exactly as before. Team messages about this only reach members who are online; anything that happened while everyone was offline shows up in the upkeep overview. `/lc_ftb_hook force_upkeep` now also works on an empty server in that case.
+- FTB Chunks: parties paid their upkeep several times per period - once for the party itself and once more for every member. With FTB Teams, a member's personal team reports the party as its team, so the party showed up in the upkeep pass once per member as well; a one-member party paid double, a three-member party four times. Each team is now settled exactly once per period, whatever the claim mod lists, and a member's leftover personal team no longer counts as an active solo team. Solo players and Open Parties and Claims were not affected. The extra payments went to the server account; affected parties can be refunded from it (each upkeep payment shows up there once per charge, labelled with the team name).
+
+## [4.4.2]
+
+### Added
+- Ops can now spend the money in the pooled server account (GitHub issue #6), with every currency mod:
+  - `/lc_ftb_hook server_account withdraw <amount> [<player>]` pays from the server account into a player's personal account (your own if no player is named). Offline players work too, but only players who have joined this server before - on offline-mode servers any typed name would otherwise be accepted and the money would go to an account nobody can reach.
+  - `/lc_ftb_hook server_account withdraw_team <amount> <player>` pays into the account of that player's team (the party account, or the player's own account if they're not in a party).
+  - `/lc_ftb_hook server_account deposit <amount>` moves money from your personal account into the server account.
+  - Amounts are in the smallest coin (copper / spur), like `team_bank`. Recipients who are online get a chat message, and every payout and deposit is written to the server log.
+- Create: Numismatics: `/lc_ftb_hook server_account card` binds the bank card in your hand to the server account. Any op can open the account with it at a Bank Terminal; anyone else is refused. Op status is checked each time the card is used, so someone who is de-opped loses access right away.
+
+### Fixes
+- `team_bank deposit`/`withdraw` (and the new server account commands) no longer lose money when the receiving account can't hold the amount - with Numismatics, whose balances top out at about 2.1 billion spurs, the money was taken from one account and silently not added to the other. The transfer is now refused before anything moves.
+
 ## [4.4.1]
 
 ### Compatibility

@@ -29,6 +29,12 @@ public final class FtbIntegration {
                         FtbPartyOwners.repairMissingOwners();
                     }
                 }));
+        NeoForge.EVENT_BUS.addListener((ServerStartedEvent event) ->
+                Guard.run("FTB force-load takeover", () -> {
+                    if (isActive()) {
+                        FtbForceLoadTakeover.releaseNativeTickets(event.getServer());
+                    }
+                }));
     }
 
     public static boolean isActive() {

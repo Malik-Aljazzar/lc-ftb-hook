@@ -36,7 +36,7 @@ class BackendIsolationTest {
             "dev.ftb.mods.", List.of("adapter/ftb/", "mixin/ftb/", "client/ftb/", "mixin/client/ftb/"),
             "io.github.lightman314.", List.of("adapter/lightmanscurrency/", "mixin/lc/", "client/lightmanscurrency/"),
             "xaero.pac.", List.of("adapter/opac/", "mixin/opac/", "client/opac/"),
-            "dev.ithundxr.createnumismatics.", List.of("adapter/numismatics/", "client/numismatics/"),
+            "dev.ithundxr.createnumismatics.", List.of("adapter/numismatics/", "mixin/numismatics/", "client/numismatics/"),
             "xaero.map.", List.of("client/xaero/", "mixin/client/xaero/"),
             "xaero.common.", List.of("client/xaero/", "mixin/client/xaero/"),
             "xaero.lib.", List.of("client/xaero/", "mixin/client/xaero/")

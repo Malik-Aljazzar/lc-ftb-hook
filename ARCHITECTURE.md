@@ -190,9 +190,28 @@ Progress is measured by `BackendIsolationTest` (ratchet list in
   (`OpacProtectionProfile`); `OpacConfigLock` moves those options to OPAC's
   op-configurable list so players can't change them; `OpacChunkAccessOverrider`
   gives officers and private chunk owners full access (= our "Private" level).
-  The ONLY OPAC-internal hook is `mixin/opac/ChunkProtectionAccessListMixin`
-  (per-field whitelist/blacklist, `require = 0` - verified that a broken target
-  only logs a warning and protection keeps working).
+  OPAC-internal hooks, all `require = 0`: `mixin/opac/ChunkProtectionAccessListMixin`
+  (per-field whitelist/blacklist - verified that a broken target only logs a
+  warning and protection keeps working), `OpacAreaClaimTaskMixin`, and
+  `ForceLoadTicketManagerMixin` (see force-load loading below).
+- Force-load loading (4.5.0): which force-loaded chunks are actually loaded is
+  decided by this mod per region force-load mode (`data.ForceLoadMode`,
+  `service.ForceLoadModes` / `ForceLoadActivation` / `ForceLoadBilling`), not
+  by the claim mod. Loading goes through `port.chunkload.ChunkLoadPort`
+  (`adapter.neoforge.NeoForgeChunkTickets` - NeoForge's own ticket system under
+  this mod's id). The claim mod keeps the force-loaded FLAG (screens, limits,
+  expiry); its own tickets are switched off by exactly one optional hook each:
+  `mixin/ftb/FTBChunksForceLoadTicketMixin` (FTB's single ticket call; FTB's
+  tickets restored from the save are dropped once at server start by
+  `adapter.ftb.FtbForceLoadTakeover`) and `mixin/opac/ForceLoadTicketManagerMixin`
+  (OPAC's tickets aren't saved, nothing to drop). If a hook breaks, the claim
+  mod loads by its own rules on top of ours - longer than the mode says, never
+  shorter.
+- Numismatics: the ONLY Numismatics-internal hook is
+  `mixin/numismatics/BankAccountServerOpAccessMixin` (lets ops open the server
+  account at a Bank Terminal, permission checked live; `require = 0`, config
+  `required: false` - a broken target only costs the card access, the
+  `server_account` subcommands keep working).
 - **D. Client** (DONE 2026-09-29, ratchet 41 -> 0) - client claim data comes
   from our own sync, not from any claim mod's client API: `service.ClaimMapSync`
   sends every claim (team, force-loaded) plus team names/colors

@@ -31,16 +31,9 @@ public final class ServerAccountDeposit {
             LCFtbHook.LOGGER.warn("Server account unavailable - burning {} ({})", amount, sourceLabel);
             return;
         }
-        long current = account.balanceCopper();
-        long newTotal;
-        try {
-            newTotal = Math.addExact(current, amount);
-        } catch (ArithmeticException overflow) {
-            LCFtbHook.LOGGER.warn("Server account balance would overflow ({} + {}) - burning this payment instead.", current, amount);
-            return;
-        }
-        if (newTotal < 0) {
-            LCFtbHook.LOGGER.warn("Server account deposit produced a negative total ({}) - burning this payment instead.", newTotal);
+        if (!account.canReceive(amount)) {
+            LCFtbHook.LOGGER.warn("Server account balance would overflow ({} + {}) - burning this payment instead.",
+                    account.balanceCopper(), amount);
             return;
         }
         account.deposit(amount, sourceLabel);

@@ -66,7 +66,6 @@ public final class UpkeepSettlementService {
         List<String> unaffordableWarNames = new ArrayList<>();
 
         boolean chargeProtection = UpkeepGating.shouldChargeProtection(server, teamId);
-        boolean chargeForceLoad = UpkeepGating.shouldChargeForceLoad(server, teamId);
         // Skips ALL war processing outright when the war system is off - not
         // just billing (WarCostService already zeroes war cost when
         // disabled), the settlement loops themselves. Without this gate, any
@@ -113,9 +112,7 @@ public final class UpkeepSettlementService {
             // matched this symmetrically without needing a change: it's the
             // tail of restorePendingProtections, i.e. protections restored
             // first, force-loads second, wars last (see that method).
-            if (chargeForceLoad) {
-                pendingState = dismantleForceLoadsUntilAffordable(server, teamId, pendingState, account);
-            }
+            pendingState = dismantleForceLoadsUntilAffordable(server, teamId, pendingState, account);
             if (chargeProtection) {
                 pendingState = dismantleProtectionsUntilAffordable(server, teamId, pendingState, account, suspended);
             }
@@ -270,7 +267,9 @@ public final class UpkeepSettlementService {
      * as one war being dropped in {@link #dismantleOutgoingWarsUntilAffordable}
      * (contrast {@link #dismantleProtectionsUntilAffordable}, which is
      * per-property). Not a hard drop, see
-     * {@link PendingChangeService#convertOneForceLoadToPending}.
+     * {@link PendingChangeService#convertOneForceLoadToPending}. A region
+     * whose force-loads aren't charged this period is left alone - dropping
+     * it wouldn't make the bill any smaller.
      */
     private static TeamPendingState dismantleForceLoadsUntilAffordable(
             MinecraftServer server,
@@ -278,10 +277,14 @@ public final class UpkeepSettlementService {
             TeamPendingState pendingState,
             CurrencyAccount account
     ) {
+        FtbHookSavedData savedData = FtbHookSavedData.get(server);
         TeamPendingState updated = pendingState;
         for (PendingChangeService.RegionForceLoadGroup group : PendingChangeService.forceLoadDismantleOrder(server, teamId)) {
             if (WarCostService.canAffordUpkeep(server, teamId, updated, account)) {
                 break;
+            }
+            if (!ForceLoadBilling.isChargeable(server, savedData, teamId, group.regionId())) {
+                continue;
             }
             for (String chunkKey : group.chunkKeys()) {
                 updated = PendingChangeService.convertOneForceLoadToPending(server, teamId, chunkKey, updated);

@@ -93,9 +93,16 @@ public final class FtbClaimPort implements ClaimPort {
         if (!FTBTeamsAPI.api().isManagerLoaded()) {
             return List.of();
         }
+        // getTeamId() is the *effective* team: for a player who joined a
+        // party it's the party's id, so the party used to be listed once for
+        // itself and once more per member - and every upkeep pass billed it
+        // that many times (4.4.1 and older: a one-member party paid double).
+        // Keep the effective-team view (a member's leftover personal team must
+        // not show up on its own), but each team only once.
         return FTBTeamsAPI.api().getManager().getTeams().stream()
                 .filter(Team::isValid)
                 .map(Team::getTeamId)
+                .distinct()
                 .toList();
     }
 

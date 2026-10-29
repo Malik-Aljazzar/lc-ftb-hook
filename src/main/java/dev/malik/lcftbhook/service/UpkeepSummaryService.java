@@ -47,10 +47,8 @@ public final class UpkeepSummaryService {
 
         int forceLoadCurrentCount = ProtectionPricing.countEffectiveForceLoads(server, teamId, empty);
         int forceLoadPendingCount = ProtectionPricing.countEffectiveForceLoads(server, teamId, pendingState);
-        long forceLoadCurrent = UpkeepGating.shouldChargeForceLoad(server, teamId)
-                ? ProtectionPricing.calculateForceLoadCopper(forceLoadCurrentCount) : 0L;
-        long forceLoadPending = UpkeepGating.shouldChargeForceLoad(server, teamId)
-                ? ProtectionPricing.calculateForceLoadCopper(forceLoadPendingCount) : 0L;
+        long forceLoadCurrent = ForceLoadBilling.chargeableCopper(server, teamId, empty);
+        long forceLoadPending = ForceLoadBilling.chargeableCopper(server, teamId, pendingState);
 
         // baseUpkeepCopper is protection + force-load combined - subtracting
         // the independently-computed force-load piece (above) isolates

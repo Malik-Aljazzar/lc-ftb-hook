@@ -21,6 +21,10 @@ import java.util.UUID;
  * who may buy a marketplace listing within this region (state-owned "sell as
  * country" or a private resale). Per-region rather than team-wide so
  * different parts of a team's territory can open up to different buyers.
+ * <p>
+ * {@code forceLoadMode} is the mode the team CHOSE for this region's
+ * force-loads; the mode actually in effect can differ when the server has
+ * disabled the chosen one (see {@code service.ForceLoadModes#effectiveMode}).
  */
 public record Region(
         UUID id,
@@ -28,27 +32,30 @@ public record Region(
         boolean isDefault,
         Map<String, String> properties,
         boolean allowPrivateSelling,
-        String buyerAccess
+        String buyerAccess,
+        ForceLoadMode forceLoadMode
 ) {
 
     public static final String DEFAULT_NAME = "Default";
 
     public static Region createDefault() {
-        return new Region(UUID.randomUUID(), DEFAULT_NAME, true, Map.of(), true, dev.malik.lcftbhook.teams.MarketplaceTeamProperties.ACCESS_ALL);
+        return new Region(UUID.randomUUID(), DEFAULT_NAME, true, Map.of(), true,
+                dev.malik.lcftbhook.teams.MarketplaceTeamProperties.ACCESS_ALL, ForceLoadMode.DEFAULT);
     }
 
     public static Region create(String name) {
-        return new Region(UUID.randomUUID(), name, false, Map.of(), true, dev.malik.lcftbhook.teams.MarketplaceTeamProperties.ACCESS_ALL);
+        return new Region(UUID.randomUUID(), name, false, Map.of(), true,
+                dev.malik.lcftbhook.teams.MarketplaceTeamProperties.ACCESS_ALL, ForceLoadMode.DEFAULT);
     }
 
     public Region withName(String newName) {
-        return new Region(id, newName, isDefault, properties, allowPrivateSelling, buyerAccess);
+        return new Region(id, newName, isDefault, properties, allowPrivateSelling, buyerAccess, forceLoadMode);
     }
 
     public Region withProperty(String propertyId, String value) {
         Map<String, String> updated = new HashMap<>(properties);
         updated.put(propertyId, value);
-        return new Region(id, name, isDefault, Map.copyOf(updated), allowPrivateSelling, buyerAccess);
+        return new Region(id, name, isDefault, Map.copyOf(updated), allowPrivateSelling, buyerAccess, forceLoadMode);
     }
 
     public Region withoutProperty(String propertyId) {
@@ -57,15 +64,19 @@ public record Region(
         }
         Map<String, String> updated = new HashMap<>(properties);
         updated.remove(propertyId);
-        return new Region(id, name, isDefault, Map.copyOf(updated), allowPrivateSelling, buyerAccess);
+        return new Region(id, name, isDefault, Map.copyOf(updated), allowPrivateSelling, buyerAccess, forceLoadMode);
     }
 
     public Region withAllowPrivateSelling(boolean allow) {
-        return new Region(id, name, isDefault, properties, allow, buyerAccess);
+        return new Region(id, name, isDefault, properties, allow, buyerAccess, forceLoadMode);
     }
 
     public Region withBuyerAccess(String access) {
-        return new Region(id, name, isDefault, properties, allowPrivateSelling, access);
+        return new Region(id, name, isDefault, properties, allowPrivateSelling, access, forceLoadMode);
+    }
+
+    public Region withForceLoadMode(ForceLoadMode mode) {
+        return new Region(id, name, isDefault, properties, allowPrivateSelling, buyerAccess, mode);
     }
 
     public String propertyValue(ProtectionProperty property) {

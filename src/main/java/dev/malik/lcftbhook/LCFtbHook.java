@@ -66,6 +66,8 @@ public class LCFtbHook {
                 ProtectionPriceConfig.FILE_NAME);
 
         modEventBus.addListener(this::registerPayloads);
+        dev.malik.lcftbhook.port.Backends.setChunkLoad(dev.malik.lcftbhook.adapter.neoforge.NeoForgeChunkTickets.INSTANCE);
+        dev.malik.lcftbhook.adapter.neoforge.NeoForgeChunkTickets.register(modEventBus);
         NeoForge.EVENT_BUS.addListener(UpkeepDetailsCommand::register);
         NeoForge.EVENT_BUS.addListener(UpkeepPriorityCommand::register);
         NeoForge.EVENT_BUS.addListener(ClearWarsCommand::register);
@@ -82,9 +84,13 @@ public class LCFtbHook {
         NeoForge.EVENT_BUS.addListener((net.neoforged.neoforge.event.server.ServerStoppedEvent event) -> {
             dev.malik.lcftbhook.port.Backends.reset();
             ClaimMapSync.reset();
+            dev.malik.lcftbhook.service.ForceLoadActivation.reset();
         });
         NeoForge.EVENT_BUS.addListener((net.neoforged.neoforge.event.tick.ServerTickEvent.Post event) ->
                 dev.malik.lcftbhook.util.Guard.run("claim map sync tick", () -> ClaimMapSync.onServerTick(event.getServer())));
+        NeoForge.EVENT_BUS.addListener((net.neoforged.neoforge.event.tick.ServerTickEvent.Post event) ->
+                dev.malik.lcftbhook.util.Guard.run("force-load activation tick",
+                        () -> dev.malik.lcftbhook.service.ForceLoadActivation.onServerTick(event.getServer())));
         NeoForge.EVENT_BUS.addListener((net.neoforged.neoforge.event.entity.player.PlayerEvent.PlayerLoggedInEvent event) -> {
             if (event.getEntity() instanceof net.minecraft.server.level.ServerPlayer player) {
                 dev.malik.lcftbhook.util.Guard.run("claim map sync on join", () -> ClaimMapSync.onPlayerJoin(player));
@@ -293,6 +299,11 @@ public class LCFtbHook {
                 dev.malik.lcftbhook.network.SetRegionAllowPrivateSellingPayload.TYPE,
                 dev.malik.lcftbhook.network.SetRegionAllowPrivateSellingPayload.STREAM_CODEC,
                 dev.malik.lcftbhook.network.SetRegionAllowPrivateSellingPayload::handleServer
+        );
+        registrar.playToServer(
+                dev.malik.lcftbhook.network.SetRegionForceLoadModePayload.TYPE,
+                dev.malik.lcftbhook.network.SetRegionForceLoadModePayload.STREAM_CODEC,
+                dev.malik.lcftbhook.network.SetRegionForceLoadModePayload::handleServer
         );
         registrar.playToServer(
                 dev.malik.lcftbhook.network.SetRegionBuyerAccessPayload.TYPE,

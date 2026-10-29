@@ -503,7 +503,6 @@ public final class RegionService {
         if (TeamCatalog.exists(server, teamId)) {
             TeamPendingState pendingState = savedData.getPendingState(teamId);
             ProtectionPricing.ChunkCounts billable = ProtectionPricing.countBillableChunks(server, teamId);
-            boolean chargeForceLoad = UpkeepGating.shouldChargeForceLoad(server, teamId);
             for (UUID regionId : savedData.getRegionOrder(teamId)) {
                 counts.put(regionId, countChunks(server, teamId, regionId));
                 Region region = savedData.getRegion(teamId, regionId);
@@ -521,14 +520,15 @@ public final class RegionService {
                 int flCurrentCount = countForceLoadedChunks(server, teamId, regionId);
                 int flPendingCount = countEffectiveForceLoadedChunks(server, teamId, regionId, pendingState);
                 forceLoadCounts.put(regionId, flCurrentCount);
-                forceLoadCurrentUpkeep.put(regionId, chargeForceLoad ? ProtectionPricing.calculateForceLoadCopper(flCurrentCount) : 0L);
-                forceLoadPendingUpkeep.put(regionId, chargeForceLoad ? ProtectionPricing.calculateForceLoadCopper(flPendingCount) : 0L);
+                forceLoadCurrentUpkeep.put(regionId, ForceLoadBilling.regionCopper(server, teamId, regionId, flCurrentCount));
+                forceLoadPendingUpkeep.put(regionId, ForceLoadBilling.regionCopper(server, teamId, regionId, flPendingCount));
             }
         }
         return new SyncRegionsPayload(
                 savedData.getRegionOrder(teamId), savedData.getRegions(teamId),
                 counts, billableCounts, currentUpkeep, pendingUpkeep,
-                forceLoadCounts, forceLoadCurrentUpkeep, forceLoadPendingUpkeep
+                forceLoadCounts, forceLoadCurrentUpkeep, forceLoadPendingUpkeep,
+                ForceLoadModes.enabledModes()
         );
     }
 

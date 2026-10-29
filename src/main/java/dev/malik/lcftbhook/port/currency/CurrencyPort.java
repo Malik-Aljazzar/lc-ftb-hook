@@ -89,6 +89,16 @@ public interface CurrencyPort {
         return CardBinding.UNSUPPORTED;
     }
 
+    /**
+     * Binds the bank card in {@code op}'s main hand to the server account,
+     * for backends whose accounts are opened with a card. The backend must
+     * make sure only ops can actually open the account with it. Callers
+     * check op permission first.
+     */
+    default CardBinding bindServerAccountCard(ServerPlayer op) {
+        return CardBinding.UNSUPPORTED;
+    }
+
     enum CardBinding { BOUND, NO_CARD, UNSUPPORTED }
 
     /** One coin type: its display label (name, or item icon where the backend has one) and its value in the smallest unit. */

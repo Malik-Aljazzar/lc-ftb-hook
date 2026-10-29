@@ -138,7 +138,6 @@ public final class ProtectionPricing {
 
     public static long calculateTotalUpkeepCopper(MinecraftServer server, UUID teamId, TeamPendingState pendingState) {
         ChunkCounts counts = countBillableChunks(server, teamId, pendingState);
-        int forceLoadCount = countEffectiveForceLoads(server, teamId, pendingState);
         long protectionCopper = UpkeepGating.shouldChargeProtection(server, teamId)
                 ? calculateProtectionCopper(
                         server,
@@ -149,10 +148,7 @@ public final class ProtectionPricing {
                         counts
                 )
                 : 0L;
-        long forceLoadCopper = UpkeepGating.shouldChargeForceLoad(server, teamId)
-                ? calculateForceLoadCopper(forceLoadCount)
-                : 0L;
-        return protectionCopper + forceLoadCopper;
+        return protectionCopper + ForceLoadBilling.chargeableCopper(server, teamId, pendingState);
     }
 
     public static long calculateTotalUpkeepCopper(
@@ -162,17 +158,13 @@ public final class ProtectionPricing {
             Map<String, String> pricingOverrides
     ) {
         ChunkCounts counts = countBillableChunks(server, teamId, pendingState);
-        int forceLoadCount = countEffectiveForceLoads(server, teamId, pendingState);
         TeamPendingState overlay = new TeamPendingState(pricingOverrides,
                 pendingState.pendingForceLoads(), pendingState.pendingForceUnloads(),
                 pendingState.pendingRegionAssignments(), pendingState.pendingWarDeclares(), pendingState.pendingWarEnds());
         long protectionCopper = UpkeepGating.shouldChargeProtection(server, teamId)
                 ? calculateProtectionCopper(server, teamId, overlay, counts)
                 : 0L;
-        long forceLoadCopper = UpkeepGating.shouldChargeForceLoad(server, teamId)
-                ? calculateForceLoadCopper(forceLoadCount)
-                : 0L;
-        return protectionCopper + forceLoadCopper;
+        return protectionCopper + ForceLoadBilling.chargeableCopper(server, teamId, pendingState);
     }
 
     public static int countEffectiveForceLoads(MinecraftServer server, UUID teamId, TeamPendingState pendingState) {

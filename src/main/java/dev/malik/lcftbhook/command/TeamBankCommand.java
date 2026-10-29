@@ -4,6 +4,7 @@ import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.LongArgumentType;
 import com.mojang.brigadier.context.CommandContext;
 import dev.malik.lcftbhook.LCFtbHook;
+import dev.malik.lcftbhook.bank.AccountTransfer;
 import dev.malik.lcftbhook.port.Backends;
 import dev.malik.lcftbhook.port.currency.CurrencyAccount;
 import dev.malik.lcftbhook.port.currency.CurrencyPort;
@@ -95,19 +96,29 @@ public final class TeamBankCommand {
         CurrencyAccount personal = currency.playerAccount(server, player.getUUID());
         CurrencyAccount from = deposit ? personal : team;
         CurrencyAccount to = deposit ? team : personal;
-        if (!from.canAfford(amount)) {
-            context.getSource().sendFailure(Component.translatable("message.lc_ftb_hook.insufficient_funds",
-                    Money.formatValue(amount), Money.formatBalance(from)));
+        String label = deposit ? "Team Deposit" : "Team Withdrawal";
+        if (!reportTransfer(context.getSource(), AccountTransfer.move(from, to, amount, label), amount, from)) {
             return 0;
         }
-        String label = deposit ? "Team Deposit" : "Team Withdrawal";
-        from.withdraw(amount, label);
-        to.deposit(amount, label);
         context.getSource().sendSuccess(() -> Component.translatable(
                 deposit ? "message.lc_ftb_hook.team_bank.deposited" : "message.lc_ftb_hook.team_bank.withdrawn",
                 Money.formatValue(amount), Money.formatBalance(team)), false);
         ClaimPriceSync.syncToPlayer(player);
         return 1;
+    }
+
+    /** Sends the failure message for a transfer that didn't happen; true when it went through. */
+    static boolean reportTransfer(CommandSourceStack source, AccountTransfer.Result result, long amount, CurrencyAccount from) {
+        switch (result) {
+            case DONE -> {
+                return true;
+            }
+            case INSUFFICIENT_FUNDS -> source.sendFailure(Component.translatable("message.lc_ftb_hook.insufficient_funds",
+                    Money.formatValue(amount), Money.formatBalance(from)));
+            case TARGET_FULL -> source.sendFailure(Component.translatable("message.lc_ftb_hook.transfer.target_full"));
+            case FAILED -> source.sendFailure(Component.translatable("message.lc_ftb_hook.transfer.failed"));
+        }
+        return false;
     }
 
     /** The player's party, or null (with a message) - a solo player's team account IS their personal account. */

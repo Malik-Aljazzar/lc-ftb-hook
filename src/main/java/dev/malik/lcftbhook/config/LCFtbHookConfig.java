@@ -27,6 +27,10 @@ public final class LCFtbHookConfig {
         public final ModConfigSpec.DoubleValue unclaimRefundRatio;
         public final ModConfigSpec.LongValue forceLoadUpkeepPrice;
         public final ModConfigSpec.IntValue upkeepPeriodMinutes;
+        public final ModConfigSpec.BooleanValue forceLoadModeAlwaysEnabled;
+        public final ModConfigSpec.BooleanValue forceLoadModeAnyPlayerEnabled;
+        public final ModConfigSpec.BooleanValue forceLoadModeTeamOnlineEnabled;
+        /** Legacy, migration only - see {@link ForceLoadUpkeepMode}. */
         public final ModConfigSpec.EnumValue<ForceLoadUpkeepMode> forceLoadUpkeepMode;
         public final ModConfigSpec.EnumValue<ProtectionUpkeepMode> protectionUpkeepMode;
         public final ModConfigSpec.DoubleValue warCostMultiplier;
@@ -147,11 +151,36 @@ public final class LCFtbHookConfig {
                     )
                     .define("lockClaimVisibilityPublic", true);
 
+            forceLoadModeAlwaysEnabled = builder
+                    .comment(
+                            "Force-load modes: every region picks one of these for its force-loaded chunks. A",
+                            "region's force-loads are only loaded while its mode says so, and they're charged for",
+                            "every upkeep period in which they were loaded. This overrides the claim mod's own",
+                            "force-load rules (FTB Chunks' force_load_mode / offline force-loading, OPAC's",
+                            "offline force-loading) - those are ignored while this mod is the one charging upkeep.",
+                            "The three settings below choose which modes regions may pick (all true by default);",
+                            "a disabled mode isn't offered. A region whose mode gets disabled falls back to the",
+                            "next CHEAPER enabled mode (Always -> Any player online -> Team online); if there is",
+                            "none, its force-loads rest - not loaded, not charged - until the team picks an",
+                            "allowed mode.",
+                            "",
+                            "Always: loaded and charged every period, even while nobody is on the server."
+                    )
+                    .define("forceLoadModeAlwaysEnabled", true);
+
+            forceLoadModeAnyPlayerEnabled = builder
+                    .comment("Any player online: loaded and charged while at least one player is online anywhere on the server.")
+                    .define("forceLoadModeAnyPlayerEnabled", true);
+
+            forceLoadModeTeamOnlineEnabled = builder
+                    .comment("Team online: loaded and charged only while at least one of the team's own members is online.")
+                    .define("forceLoadModeTeamOnlineEnabled", true);
+
             forceLoadUpkeepMode = builder
                     .comment(
-                            "When force-load upkeep is actually charged for a period:",
-                            "ALWAYS = charged every period regardless of who is online.",
-                            "DEFAULT = charged only when at least one of the team's own members is online."
+                            "Legacy (before 4.5.0) - has no effect any more, force-load mode is chosen per region",
+                            "now (see above). Only read once, when a world from an older version is first loaded:",
+                            "its regions get the mode this said (ALWAYS -> Always, DEFAULT -> Team online)."
                     )
                     .defineEnum("forceLoadUpkeepMode", ForceLoadUpkeepMode.DEFAULT);
 

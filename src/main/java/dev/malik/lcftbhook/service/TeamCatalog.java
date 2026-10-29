@@ -25,8 +25,23 @@ public final class TeamCatalog {
         return teamId != null && Backends.claim().isActiveTeam(server, teamId);
     }
 
+    /**
+     * Every active team exactly once - upkeep bills each entry of this list,
+     * so a team listed twice would be charged twice per pass (FTB listed a
+     * party once per member until 4.4.2). Deduplicated here as well, not only
+     * in the FTB adapter, so no claim backend can ever cause double billing.
+     */
     public static List<UUID> activeTeams(MinecraftServer server) {
-        return Backends.claim().allTeams(server).stream().filter(id -> isActive(server, id)).toList();
+        return distinctActive(Backends.claim().allTeams(server), id -> isActive(server, id));
+    }
+
+    /** Backend order kept, nulls and repeats dropped, then filtered by {@code isActive}. */
+    static List<UUID> distinctActive(List<UUID> teams, java.util.function.Predicate<UUID> isActive) {
+        return teams.stream()
+                .filter(java.util.Objects::nonNull)
+                .distinct()
+                .filter(isActive)
+                .toList();
     }
 
     public static boolean isParty(MinecraftServer server, UUID teamId) {

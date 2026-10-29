@@ -1,6 +1,7 @@
 package dev.malik.lcftbhook.port;
 
 import dev.malik.lcftbhook.config.LCFtbHookConfig;
+import dev.malik.lcftbhook.port.chunkload.ChunkLoadPort;
 import dev.malik.lcftbhook.port.claim.ClaimPort;
 import dev.malik.lcftbhook.port.currency.CurrencyPort;
 import net.neoforged.neoforge.common.ModConfigSpec;
@@ -36,6 +37,7 @@ import net.neoforged.neoforge.common.ModConfigSpec;
 public final class Backends {
     private static CurrencyPort currency;
     private static ClaimPort claim;
+    private static ChunkLoadPort chunkLoad;
 
     private Backends() {
     }
@@ -70,6 +72,18 @@ public final class Backends {
      * server may be configured differently (the server config is synced to
      * clients on join).
      */
+    /** The one chunk-loading implementation (the platform's own, not a pluggable mod) - set once at mod construction. */
+    public static ChunkLoadPort chunkLoad() {
+        if (chunkLoad == null) {
+            throw new IllegalStateException("No chunk loading backend registered");
+        }
+        return chunkLoad;
+    }
+
+    public static void setChunkLoad(ChunkLoadPort port) {
+        chunkLoad = port;
+    }
+
     public static void reset() {
         currency = null;
         claim = null;

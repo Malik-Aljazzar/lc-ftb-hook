@@ -30,6 +30,7 @@ public class FtbHookSavedData extends SavedData {
     private final Map<UUID, TeamLinkEntry> teamLinks = new HashMap<>();
     /** Entries that failed to load - written back unchanged, never dropped (see {@link #load}). */
     private final List<CompoundTag> quarantined = new ArrayList<>();
+    private ForceLoadUsage forceLoadUsage = new ForceLoadUsage();
 
     /** False while the server is still starting up (worlds not created yet) - {@link #get} would fail then. */
     public static boolean isAvailable(MinecraftServer server) {
@@ -71,6 +72,13 @@ public class FtbHookSavedData extends SavedData {
                 data.quarantined.add(entryTag.copy());
                 LCFtbHook.LOGGER.error("Could not read hook data entry #{} - kept unchanged in the save file", i, e);
             }
+        }
+        data.forceLoadUsage = loadForceLoadUsage(tag.getList("ForceLoadUsage", Tag.TAG_COMPOUND));
+        int migratedRegions = LegacyForceLoadMode.takeMigratedCount();
+        if (migratedRegions > 0) {
+            LCFtbHook.LOGGER.info("Gave {} region(s) from before 4.5.0 the force-load mode {} (from the old forceLoadUpkeepMode setting)",
+                    migratedRegions, LegacyForceLoadMode.modeForUnmigratedRegionPreview().id());
+            data.setDirty();
         }
         data.reportSharedLcLinks();
         return data;
@@ -189,6 +197,36 @@ public class FtbHookSavedData extends SavedData {
         return landChunks;
     }
 
+    /** Absent in saves from before 4.5.0 - an empty list, so nobody's usage is assumed. */
+    private static ForceLoadUsage loadForceLoadUsage(ListTag list) {
+        Map<UUID, Set<UUID>> saved = new HashMap<>();
+        for (int i = 0; i < list.size(); i++) {
+            CompoundTag entry = list.getCompound(i);
+            if (!entry.hasUUID("TeamId")) {
+                continue;
+            }
+            Set<UUID> regions = new HashSet<>();
+            for (Tag regionTag : entry.getList("Regions", Tag.TAG_INT_ARRAY)) {
+                regions.add(NbtUtils.loadUUID(regionTag));
+            }
+            saved.put(entry.getUUID("TeamId"), regions);
+        }
+        return ForceLoadUsage.of(saved);
+    }
+
+    private static ListTag saveForceLoadUsage(Map<UUID, Set<UUID>> usage) {
+        ListTag list = new ListTag();
+        usage.forEach((teamId, regions) -> {
+            CompoundTag entry = new CompoundTag();
+            entry.putUUID("TeamId", teamId);
+            ListTag regionList = new ListTag();
+            regions.forEach(regionId -> regionList.add(NbtUtils.createUUID(regionId)));
+            entry.put("Regions", regionList);
+            list.add(entry);
+        });
+        return list;
+    }
+
     private static void loadRegions(CompoundTag entryTag, List<UUID> regionOrder, Map<UUID, Region> regions) {
         ListTag regionsTag = entryTag.getList("Regions", Tag.TAG_COMPOUND);
         for (int i = 0; i < regionsTag.size(); i++) {
@@ -209,7 +247,13 @@ public class FtbHookSavedData extends SavedData {
             String buyerAccess = regionTag.contains("BuyerAccess")
                     ? regionTag.getString("BuyerAccess")
                     : dev.malik.lcftbhook.teams.MarketplaceTeamProperties.ACCESS_ALL;
-            regions.put(id, new Region(id, name, isDefault, properties, allowPrivateSelling, buyerAccess));
+            // Absent (saves from before 4.5.0, when force-load mode was one
+            // server-wide setting) - takes over that old setting once, see
+            // LegacyForceLoadMode; written back on the next save.
+            ForceLoadMode forceLoadMode = regionTag.contains("ForceLoadMode")
+                    ? ForceLoadMode.byId(regionTag.getString("ForceLoadMode"), ForceLoadMode.DEFAULT)
+                    : LegacyForceLoadMode.modeForUnmigratedRegion();
+            regions.put(id, new Region(id, name, isDefault, properties, allowPrivateSelling, buyerAccess, forceLoadMode));
         }
         if (entryTag.contains("RegionOrder", Tag.TAG_LIST)) {
             ListTag orderTag = entryTag.getList("RegionOrder", Tag.TAG_INT_ARRAY);
@@ -367,6 +411,7 @@ public class FtbHookSavedData extends SavedData {
                 regionTag.putBoolean("IsDefault", region.isDefault());
                 regionTag.putBoolean("AllowPrivateSelling", region.allowPrivateSelling());
                 regionTag.putString("BuyerAccess", region.buyerAccess());
+                regionTag.putString("ForceLoadMode", region.forceLoadMode().id());
                 if (!region.properties().isEmpty()) {
                     CompoundTag propertiesTag = new CompoundTag();
                     region.properties().forEach(propertiesTag::putString);
@@ -440,6 +485,7 @@ public class FtbHookSavedData extends SavedData {
         }
         quarantined.forEach(raw -> list.add(raw.copy()));
         tag.put("Teams", list);
+        tag.put("ForceLoadUsage", saveForceLoadUsage(forceLoadUsage.snapshot(teamLinks::containsKey)));
         return tag;
     }
 
@@ -614,6 +660,24 @@ public class FtbHookSavedData extends SavedData {
         Region defaultRegion = Region.createDefault();
         addRegion(teamId, defaultRegion, true);
         return defaultRegion.id();
+    }
+
+    /** Records that this region's force-loads were loaded at some point since the team's last paid settlement - see {@link ForceLoadUsage}. */
+    public void markForceLoadUsed(UUID teamId, UUID regionId) {
+        if (forceLoadUsage.markUsed(teamId, regionId)) {
+            setDirty();
+        }
+    }
+
+    public boolean wasForceLoadUsed(UUID teamId, UUID regionId) {
+        return forceLoadUsage.wasUsed(teamId, regionId);
+    }
+
+    /** Starts a new billing period for this team's force-loads (after a paid settlement). */
+    public void clearForceLoadUsage(UUID teamId) {
+        if (forceLoadUsage.clear(teamId)) {
+            setDirty();
+        }
     }
 
     public void updateRegion(UUID teamId, Region region) {

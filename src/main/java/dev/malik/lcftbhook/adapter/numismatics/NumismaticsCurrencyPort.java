@@ -82,6 +82,28 @@ public final class NumismaticsCurrencyPort implements CurrencyPort {
         return account(SERVER_ACCOUNT_ID, "Server Account");
     }
 
+    /**
+     * The server account is a {@code PLAYER} account keyed by a non-player
+     * id, so Numismatics alone would authorize nobody at a Bank Terminal -
+     * {@code BankAccountServerOpAccessMixin} lets ops (permission level 2+)
+     * in, checked live on every use (a de-opped player loses access at once).
+     */
+    @Override
+    public CardBinding bindServerAccountCard(ServerPlayer op) {
+        ItemStack held = op.getMainHandItem();
+        if (!(held.getItem() instanceof CardItem)) {
+            return CardBinding.NO_CARD;
+        }
+        Numismatics.BANK.getOrCreateAccount(SERVER_ACCOUNT_ID, BankAccount.Type.PLAYER);
+        CardItem.set(held, SERVER_ACCOUNT_ID);
+        return CardBinding.BOUND;
+    }
+
+    /** Whether {@code accountId} is this mod's server account (for the op-access mixin). */
+    public static boolean isServerAccount(UUID accountId) {
+        return SERVER_ACCOUNT_ID.equals(accountId);
+    }
+
     @Override
     @Nullable
     public Component focusServerAccount(ServerPlayer op) {
@@ -140,6 +162,11 @@ public final class NumismaticsCurrencyPort implements CurrencyPort {
             if (copper > 0) {
                 account.deposit(clamp(copper));
             }
+        }
+
+        @Override
+        public boolean canReceive(long copper) {
+            return copper <= Integer.MAX_VALUE - (long) account.getBalance();
         }
 
         @Override

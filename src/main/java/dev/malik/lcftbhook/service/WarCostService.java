@@ -181,9 +181,10 @@ public final class WarCostService {
             MinecraftServer server,
             UUID teamId,
             TeamPendingState pendingState,
-            CurrencyAccount account
+            CurrencyAccount account,
+            UUID regionId
     ) {
-        return canAffordUpkeepWithMoreForceLoads(server, teamId, pendingState, account, 1);
+        return canAffordUpkeepWithMoreForceLoads(server, teamId, pendingState, account, regionId, 1);
     }
 
     /**
@@ -193,19 +194,20 @@ public final class WarCostService {
      * {@link #canAffordUpkeepWithPendingProperty}, but checking a whole group
      * together rather than one property at a time (force-loads are grouped
      * and restored/dismantled by region as an all-or-nothing unit - see
-     * {@code PendingChangeService.RegionForceLoadGroup}).
+     * {@code PendingChangeService.RegionForceLoadGroup}). The extra chunks
+     * cost something only if their region's force-loads are charged this
+     * period (see {@link ForceLoadBilling#isChargeable}).
      */
     public static boolean canAffordUpkeepWithMoreForceLoads(
             MinecraftServer server,
             UUID teamId,
             TeamPendingState pendingState,
             CurrencyAccount account,
+            UUID regionId,
             int additionalCount
     ) {
         long liveCost = calculateTotalUpkeepCostCopper(server, teamId, pendingState);
-        long extra = UpkeepGating.shouldChargeForceLoad(server, teamId)
-                ? ProtectionPricing.calculateForceLoadCopper(additionalCount)
-                : 0L;
+        long extra = ForceLoadBilling.regionCopper(server, teamId, regionId, additionalCount);
         return canAffordCost(account, liveCost + extra);
     }
 

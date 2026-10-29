@@ -1,0 +1,12 @@
+{
+  "required": false,
+  "package": "dev.malik.lcftbhook.mixin.numismatics",
+  "plugin": "dev.malik.lcftbhook.mixinplugin.BackendMixinPlugin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "BankAccountServerOpAccessMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 0
+  }
+}

@@ -44,6 +44,10 @@ public final class ForceLoadRequestService {
         if (currentlyForceLoaded == load) {
             return ClaimDecision.ALLOW;
         }
+        if (load && isResting(savedData, teamId, chunkKey, pendingState)) {
+            // Its force-loads could never load or be charged - refuse instead of queueing something dead.
+            return ClaimDecision.deny("message.lc_ftb_hook.forceload_mode_resting");
+        }
         return load ? queueLoad(server, teamId, chunkKey, pendingState) : queueUnload(server, teamId, chunkKey, pendingState);
     }
 
@@ -55,7 +59,8 @@ public final class ForceLoadRequestService {
         // already live) push us over budget" - not the general affordability
         // check, which only reflects what's already live.
         boolean affordable = WarCostService.canAffordUpkeepWithOneMoreForceLoad(
-                server, teamId, updated, Backends.currency().teamAccount(server, teamId));
+                server, teamId, updated, Backends.currency().teamAccount(server, teamId),
+                ProtectionPricing.effectiveRegion(FtbHookSavedData.get(server), teamId, chunkKey, updated));
         notifyManagers(server, teamId, affordable
                 ? "message.lc_ftb_hook.forceload_change_pending"
                 : "message.lc_ftb_hook.forceload_queued_unaffordable");
@@ -67,6 +72,12 @@ public final class ForceLoadRequestService {
         PendingStateSync.syncTeam(server, teamId);
         notifyManagers(server, teamId, "message.lc_ftb_hook.forceload_change_pending");
         return ClaimDecision.HANDLED;
+    }
+
+    /** The chunk's region has no usable force-load mode: the server disabled its mode and every cheaper one. */
+    private static boolean isResting(FtbHookSavedData savedData, UUID teamId, String chunkKey, TeamPendingState pendingState) {
+        UUID regionId = ProtectionPricing.effectiveRegion(savedData, teamId, chunkKey, pendingState);
+        return ForceLoadModes.effectiveMode(savedData, teamId, regionId).isEmpty();
     }
 
     /** Officers/owner only - force-load queue state is region management, off-limits to a plain member. */

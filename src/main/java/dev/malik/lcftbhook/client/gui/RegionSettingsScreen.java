@@ -12,6 +12,7 @@ import dev.malik.lcftbhook.network.RequestClaimPricesPayload;
 import dev.malik.lcftbhook.network.RequestRegionsPayload;
 import dev.malik.lcftbhook.network.SetRegionAllowPrivateSellingPayload;
 import dev.malik.lcftbhook.network.SetRegionBuyerAccessPayload;
+import dev.malik.lcftbhook.network.SetRegionForceLoadModePayload;
 import dev.malik.lcftbhook.network.SetRegionPropertyPayload;
 import dev.malik.lcftbhook.service.ProtectionPriceDisplay;
 import dev.malik.lcftbhook.teams.MarketplaceTeamProperties;
@@ -30,13 +31,13 @@ import java.util.UUID;
 
 /**
  * One region's settings: chunk count and upkeep first, then private selling,
- * buyer access and every protection the server's claim mod offers - click a
+ * buyer access, the force-load mode and every protection the server's claim mod offers - click a
  * row to cycle its value; queued changes show the target plus what's live now.
  */
 public class RegionSettingsScreen extends LcScreen {
     private static final int INFO_LINE = 12;
 
-    private sealed interface Row permits SellingRow, BuyerRow, PropertyRow, AdvancedRow, ComingSoonRow {
+    private sealed interface Row permits SellingRow, BuyerRow, ForceLoadRow, PropertyRow, AdvancedRow, ComingSoonRow {
     }
 
     private record AdvancedRow(int count) implements Row {
@@ -46,6 +47,9 @@ public class RegionSettingsScreen extends LcScreen {
     }
 
     private record BuyerRow() implements Row {
+    }
+
+    private record ForceLoadRow() implements Row {
     }
 
     private record PropertyRow(ProtectionProperty property) implements Row {
@@ -107,6 +111,7 @@ public class RegionSettingsScreen extends LcScreen {
         List<Row> rows = new ArrayList<>();
         rows.add(new SellingRow());
         rows.add(new BuyerRow());
+        rows.add(new ForceLoadRow());
         ProtectionRows.Layout layout = ProtectionRows.layout(this::isSet);
         layout.shown().forEach(property -> rows.add(new PropertyRow(property)));
         if (!layout.collapsed().isEmpty()) {
@@ -162,6 +167,10 @@ public class RegionSettingsScreen extends LcScreen {
                 ProtectionRows.labelAndValue(graphics, font, Component.translatable("gui.lc_ftb_hook.regions.buyer_access"),
                         Component.translatable(accessKey(region)), x, y, w, 6);
             }
+            case ForceLoadRow r -> {
+                ProtectionRows.background(graphics, x, y, w, h, hovered);
+                ProtectionRows.labelAndValue(graphics, font, ForceLoadModeRow.label(), ForceLoadModeRow.value(region), x, y, w, 6);
+            }
             case PropertyRow r -> renderProperty(graphics, region, r.property(), x, y, w, h, hovered);
         }
     }
@@ -209,6 +218,8 @@ public class RegionSettingsScreen extends LcScreen {
         switch (row) {
             case SellingRow r -> PacketDistributor.sendToServer(new SetRegionAllowPrivateSellingPayload(regionId, !region.allowPrivateSelling()));
             case BuyerRow r -> PacketDistributor.sendToServer(new SetRegionBuyerAccessPayload(regionId, nextAccess(region.buyerAccess())));
+            case ForceLoadRow r -> ForceLoadModeRow.next(region).ifPresent(mode ->
+                    PacketDistributor.sendToServer(new SetRegionForceLoadModePayload(regionId, mode.id())));
             case PropertyRow r -> {
                 // Cycle from the queued target if there is one - otherwise every
                 // click re-sent the same target and pending changes couldn't be undone.
@@ -228,6 +239,7 @@ public class RegionSettingsScreen extends LcScreen {
         return switch (row) {
             case PropertyRow r -> ProtectionDescriptionTooltip.lines(r.property(), true);
             case ComingSoonRow r -> ProtectionRows.comingSoonTooltip();
+            case ForceLoadRow r -> ForceLoadModeRow.tooltip();
             default -> List.of();
         };
     }

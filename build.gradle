@@ -372,7 +372,7 @@ publishMods {
     }
     github {
         accessToken = providers.environmentVariable('GITHUB_TOKEN')
-        repository = 'ManOfKott/lc-ftb-hook'
+        repository = 'Malik-Aljazzar/lc-ftb-hook'
         commitish = providers.environmentVariable('GITHUB_SHA').orElse('main')
         tagName = "v${mod_version}"
     }

@@ -77,8 +77,11 @@ public final class FtbTeamCatalog {
 
         TeamManager manager = FTBTeamsAPI.api().getManager();
         for (UUID memberId : team.getMembers()) {
+            // getId(), not getTeamId(): getTeamId() of a party member's
+            // personal team already returns the party, so the old comparison
+            // called that leftover personal team "active" as well.
             if (manager.getTeamForPlayerID(memberId)
-                    .map(activeTeam -> activeTeam.getTeamId().equals(team.getTeamId()))
+                    .map(activeTeam -> activeTeam.getId().equals(team.getId()))
                     .orElse(false)) {
                 return true;
             }

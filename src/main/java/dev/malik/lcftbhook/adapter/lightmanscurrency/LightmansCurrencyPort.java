@@ -181,6 +181,18 @@ public final class LightmansCurrencyPort implements CurrencyPort {
         }
 
         @Override
+        public boolean canReceive(long copper) {
+            if (copper <= 0) {
+                return true;
+            }
+            try {
+                return Math.addExact(balanceCopper(), copper) >= 0;
+            } catch (ArithmeticException overflow) {
+                return false;
+            }
+        }
+
+        @Override
         public String ownerDisplayName() {
             return account.getName().getString();
         }

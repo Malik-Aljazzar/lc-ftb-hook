@@ -131,7 +131,7 @@ public final class PendingChangeService {
             updated = updated.withoutPendingForceUnload(chunkKey);
         }
         for (RegionForceLoadGroup group : pendingForceLoadRestoreOrder(server, teamId, updated)) {
-            if (!WarCostService.canAffordUpkeepWithMoreForceLoads(server, teamId, updated, account, group.chunkKeys().size())) {
+            if (!WarCostService.canAffordUpkeepWithMoreForceLoads(server, teamId, updated, account, group.regionId(), group.chunkKeys().size())) {
                 break;
             }
             for (String chunkKey : group.chunkKeys()) {

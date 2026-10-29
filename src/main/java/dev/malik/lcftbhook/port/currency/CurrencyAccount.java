@@ -23,6 +23,14 @@ public interface CurrencyAccount {
 
     void deposit(long copper, String label);
 
+    /**
+     * Whether {@link #deposit} of {@code copper} would land in full - false
+     * when the backend's balance would overflow (Numismatics balances are
+     * {@code int}; Lightman's Currency adds {@code long}s unchecked), in which
+     * case a deposit would be skipped or corrupt the balance.
+     */
+    boolean canReceive(long copper);
+
     String ownerDisplayName();
 
     /**

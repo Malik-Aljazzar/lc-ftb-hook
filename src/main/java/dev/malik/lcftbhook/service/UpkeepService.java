@@ -21,12 +21,15 @@ public class UpkeepService {
 
     private static volatile boolean forceNextTick = false;
 
+    private static long lastEmptyCheckTick = Long.MIN_VALUE / 2;
+    private static boolean pausedWhileEmpty = true;
+
     /** Debug/testing hook (see {@code /lc_ftb_hook force_upkeep}): makes every tracked team's upkeep due on the very next server tick. */
     public static void forceNextUpkeep() {
         forceNextTick = true;
     }
 
-    /** Minutes until the next settlement pass, or -1 if not yet known (server just started). Pauses while no players are online, same as the settlement loop itself. */
+    /** Minutes until the next settlement pass, or -1 if not yet known (server just started). Pauses while no players are online, same as the settlement loop itself (unless something is charged even then, see isPausedWhileEmpty). */
     public static int minutesUntilNextUpkeep(MinecraftServer server) {
         if (nextUpkeepTick < 0L) {
             return -1;
@@ -67,7 +70,8 @@ public class UpkeepService {
             nextUpkeepTick = server.getTickCount();
         }
 
-        if (server.getPlayerList().getPlayerCount() <= 0) {
+        boolean empty = server.getPlayerList().getPlayerCount() <= 0;
+        if (empty && isPausedWhileEmpty(server)) {
             nextUpkeepTick++;
             return;
         }
@@ -81,6 +85,9 @@ public class UpkeepService {
         // Drop data of chunks that left a team behind this mod's back before anything is billed or retried.
         dev.malik.lcftbhook.util.Guard.run("chunk data check", () -> ChunkDataReconciler.reconcile(server));
         for (UUID teamId : TeamCatalog.activeTeams(server)) {
+            if (empty && !UpkeepGating.teamChargedWhileEmpty(server, teamId)) {
+                continue;
+            }
             try {
                 processTeamUpkeep(server, teamId);
             } catch (Throwable e) {
@@ -95,6 +102,24 @@ public class UpkeepService {
         // per-team dirty flag is negligible overhead) - covers every team whose
         // unsettled chunks just got cleared by processTeamUpkeep above.
         dev.malik.lcftbhook.service.MarketplaceService.broadcastUnsettledChunks(server);
+        // Force-loads were just activated/dismantled - load/unload them now, not up to a second later.
+        ForceLoadActivation.reconcile(server);
+    }
+
+    /**
+     * The settlement clock pauses while nobody is on the server, unless
+     * something is charged even then (protection on HEAVY, a region's
+     * force-loads on "Always") - pausing those would make them never charge
+     * while empty. Re-checked once a second, not every tick: it walks every
+     * team's force-loads.
+     */
+    private static boolean isPausedWhileEmpty(MinecraftServer server) {
+        // abs: the tick counter restarts at 0 with every server start (singleplayer worlds).
+        if (Math.abs(server.getTickCount() - lastEmptyCheckTick) >= 20L) {
+            lastEmptyCheckTick = server.getTickCount();
+            pausedWhileEmpty = !UpkeepGating.chargesWhileEmpty(server);
+        }
+        return pausedWhileEmpty;
     }
 
     private void processTeamUpkeep(MinecraftServer server, UUID teamId) {
@@ -147,8 +172,14 @@ public class UpkeepService {
         UpkeepBreakdownStore.store(breakdown);
 
         if (!result.paid()) {
+            // Usage stays recorded - the next paid settlement still bills it.
             return;
         }
+
+        // This period's force-load usage is paid for; the next period starts
+        // with whatever is loaded right now.
+        savedData.clearForceLoadUsage(teamId);
+        ForceLoadActivation.markLoadedRegionsUsed(server, teamId);
 
         // Upkeep successfully settled - every chunk claimed/bought since the
         // last settlement now uses its Region's real protection instead of

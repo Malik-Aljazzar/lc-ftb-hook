@@ -64,8 +64,10 @@ public record SyncPublicRegionsPayload(
                     // isDefault/allowPrivateSelling aren't needed client-side here
                     // (defaultRegionByTeam covers the "is this the default"
                     // question, and selling permission isn't shown in the hover
-                    // panel) - false is a safe placeholder for both.
-                    regionsById.put(id, new Region(id, name, false, properties, false, buyerAccess));
+                    // panel) - false is a safe placeholder for both. Same for
+                    // the force-load mode, which is team-private.
+                    regionsById.put(id, new Region(id, name, false, properties, false, buyerAccess,
+                            dev.malik.lcftbhook.data.ForceLoadMode.DEFAULT));
                 }
                 int teamCount = buffer.readVarInt();
                 Map<UUID, UUID> defaultRegionByTeam = new HashMap<>(teamCount);

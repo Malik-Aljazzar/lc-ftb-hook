@@ -6,7 +6,6 @@ import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.suggestion.Suggestions;
 import com.mojang.brigadier.suggestion.SuggestionsBuilder;
 import dev.malik.lcftbhook.LCFtbHook;
-import dev.malik.lcftbhook.config.ForceLoadUpkeepMode;
 import dev.malik.lcftbhook.config.LCFtbHookConfig;
 import dev.malik.lcftbhook.config.ClaimPricingMode;
 import dev.malik.lcftbhook.config.ProtectionUpkeepMode;
@@ -137,7 +136,12 @@ public final class RuntimeConfigCommand {
         registerLong(map, "forceLoadUpkeepPrice", c.forceLoadUpkeepPrice);
         registerInt(map, "upkeepPeriodMinutes", c.upkeepPeriodMinutes);
         registerBoolean(map, "lockClaimVisibilityPublic", c.lockClaimVisibilityPublic);
-        registerEnum(map, "forceLoadUpkeepMode", c.forceLoadUpkeepMode, ForceLoadUpkeepMode.class);
+        // forceLoadUpkeepMode is migration-only now (see ForceLoadUpkeepMode) - deliberately not offered here.
+        java.util.function.Consumer<Boolean> modesChanged = enabled -> dev.malik.lcftbhook.service.ForceLoadModeChange
+                .onEnabledModesChanged(net.neoforged.neoforge.server.ServerLifecycleHooks.getCurrentServer());
+        registerBoolean(map, "forceLoadModeAlwaysEnabled", c.forceLoadModeAlwaysEnabled, modesChanged);
+        registerBoolean(map, "forceLoadModeAnyPlayerEnabled", c.forceLoadModeAnyPlayerEnabled, modesChanged);
+        registerBoolean(map, "forceLoadModeTeamOnlineEnabled", c.forceLoadModeTeamOnlineEnabled, modesChanged);
         registerEnum(map, "protectionUpkeepMode", c.protectionUpkeepMode, ProtectionUpkeepMode.class);
         // Protection prices of every installed claim mod, e.g. "price.ftb.allow_pvp".
         dev.malik.lcftbhook.config.ProtectionPriceConfig.all().forEach((setId, prices) ->

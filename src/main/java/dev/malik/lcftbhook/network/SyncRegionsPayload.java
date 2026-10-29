@@ -2,6 +2,7 @@ package dev.malik.lcftbhook.network;
 
 import dev.malik.lcftbhook.LCFtbHook;
 import dev.malik.lcftbhook.client.ClientRegions;
+import dev.malik.lcftbhook.data.ForceLoadMode;
 import dev.malik.lcftbhook.data.Region;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
@@ -29,7 +30,8 @@ public record SyncRegionsPayload(
         Map<UUID, Long> pendingUpkeepCopper,
         Map<UUID, Integer> forceLoadCounts,
         Map<UUID, Long> forceLoadCurrentUpkeepCopper,
-        Map<UUID, Long> forceLoadPendingUpkeepCopper
+        Map<UUID, Long> forceLoadPendingUpkeepCopper,
+        List<ForceLoadMode> enabledForceLoadModes
 ) implements CustomPacketPayload {
     public static final Type<SyncRegionsPayload> TYPE =
             new Type<>(ResourceLocation.fromNamespaceAndPath(LCFtbHook.MOD_ID, "sync_regions"));
@@ -46,6 +48,7 @@ public record SyncRegionsPayload(
                     buffer.writeBoolean(region.isDefault());
                     buffer.writeBoolean(region.allowPrivateSelling());
                     buffer.writeUtf(region.buyerAccess());
+                    buffer.writeUtf(region.forceLoadMode().id());
                     buffer.writeVarInt(region.properties().size());
                     for (var entry : region.properties().entrySet()) {
                         buffer.writeUtf(entry.getKey());
@@ -58,6 +61,10 @@ public record SyncRegionsPayload(
                     buffer.writeVarInt(payload.forceLoadCounts.getOrDefault(region.id(), 0));
                     buffer.writeVarLong(payload.forceLoadCurrentUpkeepCopper.getOrDefault(region.id(), 0L));
                     buffer.writeVarLong(payload.forceLoadPendingUpkeepCopper.getOrDefault(region.id(), 0L));
+                }
+                buffer.writeVarInt(payload.enabledForceLoadModes.size());
+                for (ForceLoadMode mode : payload.enabledForceLoadModes) {
+                    buffer.writeUtf(mode.id());
                 }
             },
             buffer -> {
@@ -81,12 +88,13 @@ public record SyncRegionsPayload(
                     boolean isDefault = buffer.readBoolean();
                     boolean allowPrivateSelling = buffer.readBoolean();
                     String buyerAccess = buffer.readUtf();
+                    ForceLoadMode forceLoadMode = ForceLoadMode.byId(buffer.readUtf(), ForceLoadMode.DEFAULT);
                     int propCount = buffer.readVarInt();
                     Map<String, String> properties = new HashMap<>(propCount);
                     for (int j = 0; j < propCount; j++) {
                         properties.put(buffer.readUtf(), buffer.readUtf());
                     }
-                    regions.put(id, new Region(id, name, isDefault, properties, allowPrivateSelling, buyerAccess));
+                    regions.put(id, new Region(id, name, isDefault, properties, allowPrivateSelling, buyerAccess, forceLoadMode));
                     chunkCounts.put(id, buffer.readVarInt());
                     billableChunkCounts.put(id, buffer.readVarInt());
                     currentUpkeep.put(id, buffer.readVarLong());
@@ -95,9 +103,17 @@ public record SyncRegionsPayload(
                     forceLoadCurrentUpkeep.put(id, buffer.readVarLong());
                     forceLoadPendingUpkeep.put(id, buffer.readVarLong());
                 }
+                int modeCount = buffer.readVarInt();
+                List<ForceLoadMode> enabledModes = new ArrayList<>(modeCount);
+                for (int i = 0; i < modeCount; i++) {
+                    ForceLoadMode mode = ForceLoadMode.byId(buffer.readUtf(), null);
+                    if (mode != null) {
+                        enabledModes.add(mode);
+                    }
+                }
                 return new SyncRegionsPayload(
                         order, regions, chunkCounts, billableChunkCounts, currentUpkeep, pendingUpkeep,
-                        forceLoadCounts, forceLoadCurrentUpkeep, forceLoadPendingUpkeep
+                        forceLoadCounts, forceLoadCurrentUpkeep, forceLoadPendingUpkeep, List.copyOf(enabledModes)
                 );
             }
     );
@@ -112,7 +128,8 @@ public record SyncRegionsPayload(
             ClientRegions.update(
                     payload.regionOrder, payload.regions, payload.chunkCounts, payload.billableChunkCounts,
                     payload.currentUpkeepCopper, payload.pendingUpkeepCopper,
-                    payload.forceLoadCounts, payload.forceLoadCurrentUpkeepCopper, payload.forceLoadPendingUpkeepCopper
+                    payload.forceLoadCounts, payload.forceLoadCurrentUpkeepCopper, payload.forceLoadPendingUpkeepCopper,
+                    payload.enabledForceLoadModes
             );
             dev.malik.lcftbhook.client.ClientUiRefresh.refreshRegionList();
         });

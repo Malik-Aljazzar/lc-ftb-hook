@@ -53,7 +53,7 @@ final class TeamLinkInvariants {
         }
         for (Region extra : defaults.subList(1, defaults.size())) {
             regions.put(extra.id(), new Region(extra.id(), extra.name(), false, extra.properties(),
-                    extra.allowPrivateSelling(), extra.buyerAccess()));
+                    extra.allowPrivateSelling(), extra.buyerAccess(), extra.forceLoadMode()));
             repairs.add("region " + extra.id() + " was a second Default region - kept as a normal region");
         }
         return defaults.get(0).id();
