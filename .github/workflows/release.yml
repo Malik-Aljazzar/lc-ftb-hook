@@ -1,0 +1,64 @@
+# Publishes a version: push a tag "v<mod_version>" (e.g. v4.5.0) and this
+# builds + tests the mod, then uploads the jar to CurseForge and creates a
+# GitHub release, both with that version's CHANGELOG.md section as notes.
+# Refuses to publish if the tag doesn't match mod_version in gradle.properties
+# or the changelog has no section for it.
+#
+# Needs the repository secret CURSEFORGE_API_KEY (CurseForge account ->
+# API tokens). GITHUB_TOKEN is provided by GitHub itself.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check tag matches mod_version
+        run: |
+          version=$(grep '^mod_version=' gradle.properties | cut -d= -f2 | tr -d '\r')
+          if [ "${GITHUB_REF_NAME}" != "v${version}" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} doesn't match mod_version=${version} in gradle.properties"
+            exit 1
+          fi
+          if ! grep -q "^## \[${version}\]" CHANGELOG.md; then
+            echo "::error::CHANGELOG.md has no '## [${version}]' section"
+            exit 1
+          fi
+
+      - name: Check CurseForge token is set
+        env:
+          CURSEFORGE_API_KEY: ${{ secrets.CURSEFORGE_API_KEY }}
+        run: |
+          # Without it the publish step would silently do a dry run only.
+          if [ -z "${CURSEFORGE_API_KEY}" ]; then
+            echo "::error::Repository secret CURSEFORGE_API_KEY is not set"
+            exit 1
+          fi
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build, test and publish
+        env:
+          CURSEFORGE_API_KEY: ${{ secrets.CURSEFORGE_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          chmod +x gradlew
+          ./gradlew build publishMods --console=plain

@@ -3,6 +3,7 @@ plugins {
     id 'maven-publish'
     id 'net.neoforged.moddev' version '2.0.148'
     id 'idea'
+    id 'me.modmuss50.mod-publish-plugin' version '2.2.1'
 }
 
 tasks.named('wrapper', Wrapper).configure {
@@ -326,6 +327,55 @@ test {
 
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
+}
+
+// Release notes of this version: its own section of CHANGELOG.md, from
+// "## [<mod_version>]" up to the next "## [" heading. A release without one
+// fails instead of going out with empty or wrong notes.
+def changelogSection = providers.provider {
+    def lines = file('CHANGELOG.md').readLines('UTF-8')
+    int start = lines.findIndexOf { it.trim() == "## [${mod_version}]" }
+    if (start < 0) {
+        throw new GradleException("CHANGELOG.md has no '## [${mod_version}]' section - add one before releasing")
+    }
+    int end = lines.findIndexOf(start + 1) { it.startsWith('## [') }
+    def body = lines.subList(start + 1, end < 0 ? lines.size() : end).join('\n').trim()
+    if (body.isEmpty()) {
+        throw new GradleException("The '## [${mod_version}]' section of CHANGELOG.md is empty")
+    }
+    // Heading included, like the notes of every upload so far.
+    "## [${mod_version}]\n\n${body}"
+}
+
+// Upload to CurseForge + GitHub release, run by .github/workflows/release.yml
+// on a version tag. Without CURSEFORGE_API_KEY (e.g. on a dev machine) it's
+// always a dry run: the upload is only written to build/publishMods, never sent.
+publishMods {
+    file = jar.archiveFile
+    changelog = changelogSection
+    version = mod_version
+    type = STABLE
+    // Same names as every upload so far.
+    displayName = "${mod_id}-${mod_version}"
+    modLoaders.add('neoforge')
+    dryRun = providers.environmentVariable('CURSEFORGE_API_KEY').getOrNull() == null
+
+    curseforge {
+        projectId = '1576403'
+        accessToken = providers.environmentVariable('CURSEFORGE_API_KEY')
+        minecraftVersions.add(minecraft_version)
+        client = true
+        server = true
+        // Every backend is optional - one claim mod and one currency mod are picked at runtime.
+        optional('ftb-chunks-forge', 'open-parties-and-claims', 'lightmans-currency', 'numismatics',
+                'xaeros-minimap', 'xaeros-world-map')
+    }
+    github {
+        accessToken = providers.environmentVariable('GITHUB_TOKEN')
+        repository = 'ManOfKott/lc-ftb-hook'
+        commitish = providers.environmentVariable('GITHUB_SHA').orElse('main')
+        tagName = "v${mod_version}"
+    }
 }
 
 idea {
