@@ -224,6 +224,17 @@ Progress is measured by `BackendIsolationTest` (ratchet list in
   `adapter/scguns/ScgunsBlockChanges` reads a bullet's shooter). Strict check
   after a ScorchedGuns bump: `-Pscguns_mixin_required=true
   -Pscguns_mixin_default_require=1` + `/lcfhtest scguns` (see below).
+- Upkeep discount for large chunk amounts (4.5.3, `upkeepDeceleration`, off by
+  default): `service.UpkeepDeceleration` is the pure curve (tested for
+  monotonicity, concavity/subadditivity, continuity in `UpkeepDecelerationTest`);
+  `service.DeceleratedProtectionPricing` counts each protection setting over the
+  whole team and prices it through the curve, capped at the linear per-region
+  price. `ProtectionPricing.calculateProtectionCopper` is the single entry point,
+  so billing, pending-vs-immediate decisions, dismantle order and war costs all
+  see the discounted figure; region screens keep list prices, the discount is
+  one line in the team breakdowns (`UpkeepSummary` / `UpkeepBreakdown`).
+  Explanation for players: `/lc_ftb_hook upkeep_discount`. Dev check:
+  `/lcfhtest upkeep <team>`.
 - Numismatics: the ONLY Numismatics-internal hook is
   `mixin/numismatics/BankAccountServerOpAccessMixin` (lets ops open the server
   account at a Bank Terminal, permission checked live; `require = 0`, config

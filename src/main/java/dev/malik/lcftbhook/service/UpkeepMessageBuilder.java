@@ -178,6 +178,12 @@ public final class UpkeepMessageBuilder {
         for (UpkeepBreakdown.RegionProtectionSection section : breakdown.regionSections()) {
             appendRegionSection(message, section);
         }
+        if (breakdown.protectionDiscountCopper() > 0) {
+            message.append("\n");
+            appendLine(message, "message.lc_ftb_hook.upkeep_detail.discount", Component.literal("-")
+                    .append(dev.malik.lcftbhook.util.Money.formatValue(breakdown.protectionDiscountCopper()))
+                    .withStyle(ChatFormatting.GREEN));
+        }
 
         appendWarSection(message, breakdown);
 

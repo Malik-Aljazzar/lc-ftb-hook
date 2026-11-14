@@ -16,7 +16,7 @@
       ],
       "vmArgs": [
         "@C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\build\\moddev\\clientRunVmArgs.txt",
-        "-Dfml.modFolders\u003dlc_ftb_hook%%C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\bin\\main"
+        "-Dfml.modFolders\u003dlc_ftb_hook_devtest%%C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\bin\\devtest;lc_ftb_hook%%C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\bin\\main"
       ],
       "cwd": "${workspaceFolder}\\clients\\ftb-lc-1",
       "env": {},
@@ -38,7 +38,7 @@
       ],
       "vmArgs": [
         "@C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\build\\moddev\\client2RunVmArgs.txt",
-        "-Dfml.modFolders\u003dlc_ftb_hook%%C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\bin\\main"
+        "-Dfml.modFolders\u003dlc_ftb_hook_devtest%%C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\bin\\devtest;lc_ftb_hook%%C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\bin\\main"
       ],
       "cwd": "${workspaceFolder}\\clients\\ftb-lc-2",
       "env": {},
@@ -60,7 +60,7 @@
       ],
       "vmArgs": [
         "@C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\build\\moddev\\client3RunVmArgs.txt",
-        "-Dfml.modFolders\u003dlc_ftb_hook%%C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\bin\\main"
+        "-Dfml.modFolders\u003dlc_ftb_hook_devtest%%C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\bin\\devtest;lc_ftb_hook%%C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\bin\\main"
       ],
       "cwd": "${workspaceFolder}\\clients\\ftb-lc-3",
       "env": {},
@@ -82,7 +82,7 @@
       ],
       "vmArgs": [
         "@C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\build\\moddev\\clientFtbNum1RunVmArgs.txt",
-        "-Dfml.modFolders\u003dlc_ftb_hook%%C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\bin\\main"
+        "-Dfml.modFolders\u003dlc_ftb_hook_devtest%%C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\bin\\devtest;lc_ftb_hook%%C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\bin\\main"
       ],
       "cwd": "${workspaceFolder}\\clients\\ftb-num-1",
       "env": {},
@@ -104,7 +104,7 @@
       ],
       "vmArgs": [
         "@C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\build\\moddev\\clientFtbNum2RunVmArgs.txt",
-        "-Dfml.modFolders\u003dlc_ftb_hook%%C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\bin\\main"
+        "-Dfml.modFolders\u003dlc_ftb_hook_devtest%%C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\bin\\devtest;lc_ftb_hook%%C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\bin\\main"
       ],
       "cwd": "${workspaceFolder}\\clients\\ftb-num-2",
       "env": {},
@@ -126,7 +126,7 @@
       ],
       "vmArgs": [
         "@C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\build\\moddev\\clientOpac1RunVmArgs.txt",
-        "-Dfml.modFolders\u003dlc_ftb_hook%%C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\bin\\main"
+        "-Dfml.modFolders\u003dlc_ftb_hook_devtest%%C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\bin\\devtest;lc_ftb_hook%%C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\bin\\main"
       ],
       "cwd": "${workspaceFolder}\\clients\\opac-num-1",
       "env": {},
@@ -148,7 +148,7 @@
       ],
       "vmArgs": [
         "@C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\build\\moddev\\clientOpac2RunVmArgs.txt",
-        "-Dfml.modFolders\u003dlc_ftb_hook%%C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\bin\\main"
+        "-Dfml.modFolders\u003dlc_ftb_hook_devtest%%C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\bin\\devtest;lc_ftb_hook%%C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\bin\\main"
       ],
       "cwd": "${workspaceFolder}\\clients\\opac-num-2",
       "env": {},
@@ -170,7 +170,7 @@
       ],
       "vmArgs": [
         "@C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\build\\moddev\\clientOpac3RunVmArgs.txt",
-        "-Dfml.modFolders\u003dlc_ftb_hook%%C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\bin\\main"
+        "-Dfml.modFolders\u003dlc_ftb_hook_devtest%%C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\bin\\devtest;lc_ftb_hook%%C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\bin\\main"
       ],
       "cwd": "${workspaceFolder}\\clients\\opac-num-3",
       "env": {},
@@ -192,7 +192,7 @@
       ],
       "vmArgs": [
         "@C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\build\\moddev\\clientOpacLc1RunVmArgs.txt",
-        "-Dfml.modFolders\u003dlc_ftb_hook%%C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\bin\\main"
+        "-Dfml.modFolders\u003dlc_ftb_hook_devtest%%C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\bin\\devtest;lc_ftb_hook%%C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\bin\\main"
       ],
       "cwd": "${workspaceFolder}\\clients\\opac-lc-1",
       "env": {},
@@ -214,7 +214,7 @@
       ],
       "vmArgs": [
         "@C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\build\\moddev\\clientOpacLc2RunVmArgs.txt",
-        "-Dfml.modFolders\u003dlc_ftb_hook%%C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\bin\\main"
+        "-Dfml.modFolders\u003dlc_ftb_hook_devtest%%C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\bin\\devtest;lc_ftb_hook%%C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\bin\\main"
       ],
       "cwd": "${workspaceFolder}\\clients\\opac-lc-2",
       "env": {},
@@ -236,7 +236,7 @@
       ],
       "vmArgs": [
         "@C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\build\\moddev\\serverRunVmArgs.txt",
-        "-Dfml.modFolders\u003dlc_ftb_hook%%C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\bin\\main"
+        "-Dfml.modFolders\u003dlc_ftb_hook_devtest%%C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\bin\\devtest;lc_ftb_hook%%C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\bin\\main"
       ],
       "cwd": "${workspaceFolder}\\run",
       "env": {},
@@ -258,7 +258,7 @@
       ],
       "vmArgs": [
         "@C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\build\\moddev\\serverFtbNumRunVmArgs.txt",
-        "-Dfml.modFolders\u003dlc_ftb_hook%%C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\bin\\main"
+        "-Dfml.modFolders\u003dlc_ftb_hook_devtest%%C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\bin\\devtest;lc_ftb_hook%%C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\bin\\main"
       ],
       "cwd": "${workspaceFolder}\\run-ftb-num-server",
       "env": {},
@@ -280,7 +280,7 @@
       ],
       "vmArgs": [
         "@C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\build\\moddev\\serverOpacRunVmArgs.txt",
-        "-Dfml.modFolders\u003dlc_ftb_hook%%C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\bin\\main"
+        "-Dfml.modFolders\u003dlc_ftb_hook_devtest%%C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\bin\\devtest;lc_ftb_hook%%C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\bin\\main"
       ],
       "cwd": "${workspaceFolder}\\run-opac-server",
       "env": {},
@@ -302,7 +302,7 @@
       ],
       "vmArgs": [
         "@C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\build\\moddev\\serverOpacLcRunVmArgs.txt",
-        "-Dfml.modFolders\u003dlc_ftb_hook%%C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\bin\\main"
+        "-Dfml.modFolders\u003dlc_ftb_hook_devtest%%C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\bin\\devtest;lc_ftb_hook%%C:\\Users\\malik\\curseforge\\minecraft\\Instances\\Teachings of Zeta (2)\\mod_dev\\lc-ftb-hook\\bin\\main"
       ],
       "cwd": "${workspaceFolder}\\run-opac-lc-server",
       "env": {},

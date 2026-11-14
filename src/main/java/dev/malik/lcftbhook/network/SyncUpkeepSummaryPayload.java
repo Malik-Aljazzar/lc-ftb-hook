@@ -31,6 +31,8 @@ public record SyncUpkeepSummaryPayload(UpkeepSummary summary) implements CustomP
                 buffer.writeVarLong(s.warOutgoingPendingCopper());
                 buffer.writeVarInt(s.warIncomingCount());
                 buffer.writeVarInt(s.warOutgoingCount());
+                buffer.writeVarLong(s.protectionDiscountCurrentCopper());
+                buffer.writeVarLong(s.protectionDiscountPendingCopper());
             },
             buffer -> new SyncUpkeepSummaryPayload(new UpkeepSummary(
                     buffer.readVarLong(),
@@ -44,7 +46,9 @@ public record SyncUpkeepSummaryPayload(UpkeepSummary summary) implements CustomP
                     buffer.readVarLong(),
                     buffer.readVarLong(),
                     buffer.readVarInt(),
-                    buffer.readVarInt()
+                    buffer.readVarInt(),
+                    buffer.readVarLong(),
+                    buffer.readVarLong()
             ))
     );
 

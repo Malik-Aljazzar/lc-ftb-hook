@@ -29,7 +29,9 @@ public final class UpkeepSummaryService {
             long warOutgoingCurrentCopper,
             long warOutgoingPendingCopper,
             int warIncomingCount,
-            int warOutgoingCount
+            int warOutgoingCount,
+            long protectionDiscountCurrentCopper,
+            long protectionDiscountPendingCopper
     ) {
         public long totalCurrentCopper() {
             return protectionCurrentCopper + forceLoadCurrentCopper + warIncomingCurrentCopper + warOutgoingCurrentCopper;
@@ -80,7 +82,11 @@ public final class UpkeepSummaryService {
                 forceLoadCurrentCount, forceLoadPendingCount,
                 warCurrent.incomingWarCopper(), warPending.incomingWarCopper(),
                 warCurrent.outgoingWarCopper(), warPending.outgoingWarCopper(),
-                warCurrent.incomingWarCount(), warCurrent.outgoingWarCount()
+                warCurrent.incomingWarCount(), warCurrent.outgoingWarCount(),
+                // Same pricing as the protection figures above: live = what's billed now,
+                // pending = every queued target priced as if already settled.
+                ProtectionPricing.protectionDiscountForPricing(server, teamId, empty, null),
+                ProtectionPricing.protectionDiscountForPricing(server, teamId, pendingState, pendingState.pendingProperties())
         );
     }
 }

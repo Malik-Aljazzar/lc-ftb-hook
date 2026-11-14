@@ -85,6 +85,10 @@ final class RegionUpkeepTooltips {
             lines.add(breakdown("gui.lc_ftb_hook.regions.upkeep_tooltip_war_outgoing", summary.warOutgoingCurrentCopper(),
                     summary.warOutgoingPendingCopper(), summary.warOutgoingCount()));
         }
+        Component discount = discountLine(summary.protectionDiscountCurrentCopper(), summary.protectionDiscountPendingCopper());
+        if (discount != null) {
+            lines.add(discount);
+        }
         lines.add(Component.translatable("gui.lc_ftb_hook.regions.upkeep_tooltip_grand_total").append(": ")
                 .append(totalLine(teamCurrent(summary), teamPending(summary))).withStyle(ChatFormatting.GOLD));
         lines.add(ProtectionPriceDisplay.nextUpkeepWithPeriodLabel().copy().withStyle(ChatFormatting.DARK_GRAY));
@@ -190,6 +194,24 @@ final class RegionUpkeepTooltips {
     private static long priceOf(ProtectionProperty property) {
         Long price = ClientClaimPrices.protectionPrice(property.id());
         return price != null ? price : 0L;
+    }
+
+    /**
+     * "- Upkeep discount for large chunk amounts: -X" (or "-X -> -Y" when
+     * pending changes alter it) - the region sections above show list prices,
+     * this is what the team saves on their sum; null while there is none.
+     */
+    @javax.annotation.Nullable
+    private static Component discountLine(long current, long pending) {
+        if (current <= 0 && pending <= 0) {
+            return null;
+        }
+        MutableComponent amount = Component.literal("-").append(Money.format(current));
+        if (pending != current) {
+            amount.append(" -> -").append(Money.format(pending));
+        }
+        return Component.literal("- ").append(Component.translatable("gui.lc_ftb_hook.regions.upkeep_tooltip_discount"))
+                .append(": ").append(amount).withStyle(ChatFormatting.GREEN);
     }
 
     private static Component breakdown(String labelKey, long current, long pending, int count) {

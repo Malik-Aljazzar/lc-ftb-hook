@@ -531,5 +531,17 @@
   "gui.lc_ftb_hook.force_load_mode.any_player.description": "loaded and charged while anyone at all is online on the server.",
   "gui.lc_ftb_hook.force_load_mode.always.description": "always loaded and charged every period, even while nobody is online.",
   "gui.lc_ftb_hook.force_load_mode.tooltip.intro": "When this region's force-loaded chunks are kept loaded. Click to switch.",
-  "gui.lc_ftb_hook.force_load_mode.tooltip.billing": "Force-loads are charged for every upkeep period in which they were loaded at any point - switching mode or logging out doesn't undo that."
+  "gui.lc_ftb_hook.force_load_mode.tooltip.billing": "Force-loads are charged for every upkeep period in which they were loaded at any point - switching mode or logging out doesn't undo that.",
+  "gui.lc_ftb_hook.regions.upkeep_tooltip_discount": "Upkeep discount for large chunk amounts",
+  "message.lc_ftb_hook.upkeep_detail.discount": "Upkeep discount for large chunk amounts",
+  "message.lc_ftb_hook.upkeep_discount.title": "Upkeep discount for large chunk amounts",
+  "message.lc_ftb_hook.upkeep_discount.off": "Not active on this server - protection upkeep grows linearly with your chunks.",
+  "message.lc_ftb_hook.upkeep_discount.counting": "Each protection setting is counted over all of your team's chunks it is active on. How they are split into regions doesn't matter.",
+  "message.lc_ftb_hook.upkeep_discount.curve": "Up to %s chunks per setting pay the full price. Above that, a setting on n chunks is billed as %s chunks, so its price keeps growing, but slower and slower (logarithmically).",
+  "message.lc_ftb_hook.upkeep_discount.fair": "Every extra chunk still costs something, and your team never pays more than without the discount.",
+  "message.lc_ftb_hook.upkeep_discount.examples": "Examples (chunks -> billed as): %s",
+  "message.lc_ftb_hook.upkeep_discount.team": "Your team",
+  "message.lc_ftb_hook.upkeep_discount.team_none": "No paid protection is active.",
+  "message.lc_ftb_hook.upkeep_discount.team_setting": "%s: %s chunks -> billed as %s (%s)",
+  "message.lc_ftb_hook.upkeep_discount.team_total": "Discount per upkeep: %s"
 }

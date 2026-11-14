@@ -69,6 +69,7 @@ public class LCFtbHook {
         dev.malik.lcftbhook.port.Backends.setChunkLoad(dev.malik.lcftbhook.adapter.neoforge.NeoForgeChunkTickets.INSTANCE);
         dev.malik.lcftbhook.adapter.neoforge.NeoForgeChunkTickets.register(modEventBus);
         NeoForge.EVENT_BUS.addListener(UpkeepDetailsCommand::register);
+        NeoForge.EVENT_BUS.addListener(dev.malik.lcftbhook.command.UpkeepDiscountCommand::register);
         NeoForge.EVENT_BUS.addListener(UpkeepPriorityCommand::register);
         NeoForge.EVENT_BUS.addListener(ClearWarsCommand::register);
         NeoForge.EVENT_BUS.addListener(ForceUpkeepCommand::register);

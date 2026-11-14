@@ -30,6 +30,9 @@ public final class LcfhDevTest {
                         .then(Commands.literal("protect")
                                 .then(Commands.literal("on").executes(ctx -> BlockPortSmokeTest.protect(ctx.getSource(), true)))
                                 .then(Commands.literal("off").executes(ctx -> BlockPortSmokeTest.protect(ctx.getSource(), false)))))
+                .then(Commands.literal("upkeep")
+                        .then(Commands.argument("team", StringArgumentType.word())
+                                .executes(ctx -> UpkeepDiscountCheck.run(ctx.getSource(), StringArgumentType.getString(ctx, "team")))))
                 .then(Commands.literal("scguns")
                         .then(Commands.argument("owner", StringArgumentType.word())
                                 .executes(ctx -> runScguns(ctx.getSource(), StringArgumentType.getString(ctx, "owner"))))));

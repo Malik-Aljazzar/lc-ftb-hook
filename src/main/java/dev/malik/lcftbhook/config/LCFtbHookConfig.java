@@ -25,6 +25,10 @@ public final class LCFtbHookConfig {
         public final ModConfigSpec.DoubleValue claimPriceGrowthPercent;
         public final ModConfigSpec.IntValue freeChunks;
         public final ModConfigSpec.BooleanValue freeChunksExemptFromUpkeep;
+        public final ModConfigSpec.BooleanValue upkeepDeceleration;
+        public final ModConfigSpec.IntValue upkeepDecelerationThreshold;
+        public final ModConfigSpec.DoubleValue upkeepDecelerationScale;
+        public final ModConfigSpec.DoubleValue upkeepDecelerationFloor;
         public final ModConfigSpec.DoubleValue unclaimRefundRatio;
         public final ModConfigSpec.LongValue forceLoadUpkeepPrice;
         public final ModConfigSpec.IntValue upkeepPeriodMinutes;
@@ -139,6 +143,38 @@ public final class LCFtbHookConfig {
                             "regions first). Force-load upkeep is never affected."
                     )
                     .define("freeChunksExemptFromUpkeep", false);
+
+            upkeepDeceleration = builder
+                    .comment(
+                            "Upkeep discount for large chunk amounts. false (default): protection upkeep grows linearly with",
+                            "the chunks a protection covers. true: each protection setting is counted over ALL of a team's",
+                            "billable chunks it is active on (regions don't matter), and that count n is billed as",
+                            "  n                                           while n <= upkeepDecelerationThreshold (T)",
+                            "  T + f*(n-T) + (1-f) * s * ln(1 + (n-T)/s)   above it (s = Scale, f = Floor)",
+                            "i.e. logarithmic growth above T. Every extra chunk still costs more than 0, so a bigger claim never",
+                            "pays less in total, and splitting land into regions changes nothing. The team never pays more than",
+                            "without the discount. Force-load upkeep is not affected. Players see the discount in the upkeep",
+                            "breakdown; /lc_ftb_hook upkeep_discount explains it."
+                    )
+                    .define("upkeepDeceleration", false);
+
+            upkeepDecelerationThreshold = builder
+                    .comment("upkeepDeceleration: chunks per protection setting (team-wide) that always pay the full price. Default: 64.")
+                    .defineInRange("upkeepDecelerationThreshold", 64, 0, Integer.MAX_VALUE);
+
+            upkeepDecelerationScale = builder
+                    .comment(
+                            "upkeepDeceleration: how fast the price flattens above the threshold, in chunks - smaller = cheaper",
+                            "sooner. Default: 128 (with threshold 64: about -22% at 200 chunks, -49% at 500, -67% at 1000)."
+                    )
+                    .defineInRange("upkeepDecelerationScale", 128.0D, 1.0D, 1_000_000.0D);
+
+            upkeepDecelerationFloor = builder
+                    .comment(
+                            "upkeepDeceleration: the least share of the full price every additional chunk above the threshold",
+                            "costs. 0 (default) = purely logarithmic; e.g. 0.15 = an extra chunk never costs less than 15%."
+                    )
+                    .defineInRange("upkeepDecelerationFloor", 0.0D, 0.0D, 1.0D);
 
             unclaimRefundRatio = builder
                     .comment("Fraction of the claim price refunded when unclaiming a chunk (0 = none, 1 = full refund, 0.8 = 80%)")

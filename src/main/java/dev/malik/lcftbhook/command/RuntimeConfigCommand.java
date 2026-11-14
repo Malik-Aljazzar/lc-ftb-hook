@@ -135,6 +135,10 @@ public final class RuntimeConfigCommand {
                 .onBillableChunksChanged(net.neoforged.neoforge.server.ServerLifecycleHooks.getCurrentServer());
         registerInt(map, "freeChunks", c.freeChunks, billableChunksChanged);
         registerBoolean(map, "freeChunksExemptFromUpkeep", c.freeChunksExemptFromUpkeep, enabled -> billableChunksChanged.run());
+        registerBoolean(map, "upkeepDeceleration", c.upkeepDeceleration, enabled -> billableChunksChanged.run());
+        registerInt(map, "upkeepDecelerationThreshold", c.upkeepDecelerationThreshold, billableChunksChanged);
+        registerDouble(map, "upkeepDecelerationScale", c.upkeepDecelerationScale, billableChunksChanged);
+        registerDouble(map, "upkeepDecelerationFloor", c.upkeepDecelerationFloor, billableChunksChanged);
         registerDouble(map, "unclaimRefundRatio", c.unclaimRefundRatio);
         registerLong(map, "forceLoadUpkeepPrice", c.forceLoadUpkeepPrice);
         registerInt(map, "upkeepPeriodMinutes", c.upkeepPeriodMinutes);
@@ -211,6 +215,12 @@ public final class RuntimeConfigCommand {
     }
 
     private static void registerDouble(Map<String, Entry> map, String key, ModConfigSpec.DoubleValue value) {
+        registerDouble(map, key, value, null);
+    }
+
+    private static void registerDouble(
+            Map<String, Entry> map, String key, ModConfigSpec.DoubleValue value, @javax.annotation.Nullable Runnable onChanged
+    ) {
         map.put(key, new Entry(
                 () -> String.valueOf(value.get()),
                 input -> {
@@ -225,6 +235,9 @@ public final class RuntimeConfigCommand {
                     }
                     value.set(parsed);
                     value.save();
+                    if (onChanged != null) {
+                        onChanged.run();
+                    }
                     return null;
                 }
         ));

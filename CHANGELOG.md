@@ -2,6 +2,13 @@
 
 All notable changes to LC FTB Hook are documented in this file.
 
+## [4.5.3]
+
+### Added
+- Upkeep discount for large chunk amounts (server setting `upkeepDeceleration`, off by default). When on, protection upkeep grows logarithmically instead of linearly with the number of chunks. Each protection setting is counted over all of a team's billable chunks it is active on, no matter how they are split into regions, and that count `n` is billed as `n` up to `upkeepDecelerationThreshold` (default 64) and as `T + f*(n-T) + (1-f) * s * ln(1 + (n-T)/s)` above it (`upkeepDecelerationScale` s, default 128; `upkeepDecelerationFloor` f, default 0). With the defaults, a setting on 200 chunks costs about 22% less, on 500 about 49% less, on 1000 about 67% less. Every extra chunk still costs something, so a larger claim never pays less in total; splitting land into regions changes nothing; and a team never pays more than without the discount. Force-load upkeep is not affected. All four settings can be changed with `/lc_ftb_hook config set`, and the region screens update right away.
+- The Region List's upkeep breakdown and `/lc_ftb_hook upkeep_details` show the discount as its own line, "Upkeep discount for large chunk amounts". The regions themselves keep showing their list prices.
+- `/lc_ftb_hook upkeep_discount` explains the discount: how it is calculated, the server's current numbers with examples, and, for the player's own team, each protection setting's chunk count, what it is billed as, and the discount per upkeep.
+
 ## [4.5.2]
 
 ### Fixed

@@ -19,6 +19,7 @@ public record UpkeepBreakdown(
         int chunkCount,
         int forceLoadCount,
         long protectionCopper,
+        long protectionDiscountCopper,
         long baseUpkeepCopper,
         long incomingWarCopper,
         long outgoingWarCopper,
@@ -94,6 +95,9 @@ public record UpkeepBreakdown(
                 counts.totalChunks(),
                 forceLoadCount,
                 totalProtectionCopper,
+                // Region sections show list prices; this is what the upkeep discount for large
+                // chunk amounts takes off their sum (same pricing as baseUpkeepCopper below).
+                ProtectionPricing.protectionDiscountForPricing(server, teamId, pendingState, null),
                 warCosts.baseUpkeepCopper(),
                 warCosts.incomingWarCopper(),
                 warCosts.outgoingWarCopper(),

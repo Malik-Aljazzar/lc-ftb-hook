@@ -84,13 +84,18 @@ public final class ProtectionPricing {
     public static long regionBasePrice(Region region, Map<String, String> pendingOverrides) {
         long base = 0L;
         for (ProtectionProperty property : ProtectionProperty.values()) {
-            String key = RegionPropertyKey.encode(region.id(), property.id());
-            String value = pendingOverrides.containsKey(key) ? pendingOverrides.get(key) : region.propertyValue(property);
-            if (!property.isAtMinimum(value)) {
+            if (isActive(region, property, pendingOverrides)) {
                 base += property.configPrice();
             }
         }
         return base;
+    }
+
+    /** Whether this property is above its minimum on the region - the pending-overlay value if one is queued. */
+    static boolean isActive(Region region, ProtectionProperty property, Map<String, String> pendingOverrides) {
+        String key = RegionPropertyKey.encode(region.id(), property.id());
+        String value = pendingOverrides.containsKey(key) ? pendingOverrides.get(key) : region.propertyValue(property);
+        return !property.isAtMinimum(value);
     }
 
     private static long regionBasePrice(FtbHookSavedData savedData, UUID teamId, UUID regionId, TeamPendingState pendingState) {
@@ -101,7 +106,85 @@ public final class ProtectionPricing {
         return regionBasePrice(region, pendingState.pendingProperties());
     }
 
+    /**
+     * The protection upkeep actually billed: the linear per-region price,
+     * lowered by the upkeep discount for large chunk amounts when
+     * upkeepDeceleration is on (see {@link DeceleratedProtectionPricing}).
+     * Every billing, pending-vs-immediate and war cost decision goes through
+     * here, so they all see the same discounted figure.
+     */
     public static long calculateProtectionCopper(
+            MinecraftServer server,
+            UUID teamId,
+            TeamPendingState pendingState,
+            ChunkCounts counts
+    ) {
+        long linear = linearProtectionCopper(server, teamId, pendingState, counts);
+        FtbHookSavedData savedData = FtbHookSavedData.get(server);
+        return DeceleratedProtectionPricing.billedCopper(counts.perRegion().values(),
+                regionId -> regionOrDefault(savedData, teamId, regionId), pendingState.pendingProperties(),
+                linear, UpkeepDeceleration.configured());
+    }
+
+    /** What the upkeep discount for large chunk amounts saves: linear price minus billed price (0 when off). */
+    public static long protectionDiscountCopper(
+            MinecraftServer server,
+            UUID teamId,
+            TeamPendingState pendingState,
+            ChunkCounts counts
+    ) {
+        return linearProtectionCopper(server, teamId, pendingState, counts)
+                - calculateProtectionCopper(server, teamId, pendingState, counts);
+    }
+
+    /**
+     * The discount for the same pricing as {@link #calculateTotalUpkeepCopper}
+     * (live: only properties that are actually billed; with
+     * {@code pricingOverrides}: that overlay) - 0 when protection isn't charged.
+     */
+    public static long protectionDiscountForPricing(
+            MinecraftServer server,
+            UUID teamId,
+            TeamPendingState pendingState,
+            @javax.annotation.Nullable Map<String, String> pricingOverrides
+    ) {
+        if (!UpkeepGating.shouldChargeProtection(server, teamId)) {
+            return 0L;
+        }
+        Map<String, String> pricing = pricingOverrides != null
+                ? pricingOverrides
+                : ProtectionRollbackService.pricingProperties(server, teamId, pendingState);
+        return protectionDiscountCopper(server, teamId, withPricing(pendingState, pricing),
+                countBillableChunks(server, teamId, pendingState));
+    }
+
+    /**
+     * Per active, priced protection setting: how many billable chunks of the
+     * team it covers - exactly the counts live billing feeds into the upkeep
+     * discount curve (for {@code /lc_ftb_hook upkeep_discount}).
+     */
+    public static Map<ProtectionProperty, Long> billedChunksPerSetting(MinecraftServer server, UUID teamId) {
+        FtbHookSavedData savedData = FtbHookSavedData.get(server);
+        TeamPendingState pendingState = savedData.getPendingState(teamId);
+        Map<String, String> pricing = ProtectionRollbackService.pricingProperties(server, teamId, pendingState);
+        ChunkCounts counts = countBillableChunks(server, teamId, pendingState);
+        return DeceleratedProtectionPricing.chunksPerSetting(counts.perRegion().values(),
+                regionId -> regionOrDefault(savedData, teamId, regionId), pricing);
+    }
+
+    private static TeamPendingState withPricing(TeamPendingState pendingState, Map<String, String> pricing) {
+        return new TeamPendingState(pricing,
+                pendingState.pendingForceLoads(), pendingState.pendingForceUnloads(),
+                pendingState.pendingRegionAssignments(), pendingState.pendingWarDeclares(), pendingState.pendingWarEnds());
+    }
+
+    private static Region regionOrDefault(FtbHookSavedData savedData, UUID teamId, UUID regionId) {
+        Region region = savedData.getRegion(teamId, regionId);
+        return region != null ? region : Region.createDefault();
+    }
+
+    /** The plain per-region price: sum of each region's active property prices x its billable chunks. */
+    private static long linearProtectionCopper(
             MinecraftServer server,
             UUID teamId,
             TeamPendingState pendingState,

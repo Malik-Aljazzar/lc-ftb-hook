@@ -7,8 +7,8 @@ import net.minecraft.server.MinecraftServer;
 import java.util.UUID;
 
 /**
- * The server changed a setting that decides how many of a team's chunks are
- * billed (freeChunks, freeChunksExemptFromUpkeep). Billing picks it up at the
+ * The server changed a setting that decides how a team's chunks are billed
+ * (freeChunks, freeChunksExemptFromUpkeep, upkeepDeceleration*). Billing picks it up at the
  * next upkeep on its own; this pushes the new billable counts and costs to
  * everyone online right away so the region screens and war costs match.
  */
@@ -24,6 +24,8 @@ public final class UpkeepPricingChange {
             if (!Backends.claim().onlineMembers(server, teamId).isEmpty()) {
                 RegionService.syncRegionsToTeam(server, teamId);
                 WarStateSync.onUpkeepFactorsChanged(server, teamId);
+                // The Region List header and its breakdown (totals, upkeep discount) come from the summary.
+                dev.malik.lcftbhook.network.PendingStateSync.syncTeam(server, teamId);
             }
         }
     }
