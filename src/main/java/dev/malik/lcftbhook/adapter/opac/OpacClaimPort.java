@@ -38,6 +38,13 @@ public final class OpacClaimPort implements ClaimPort {
         return OpacProtectionFields.SET;
     }
 
+    private final OpacBlockProtection blockProtection = new OpacBlockProtection();
+
+    @Override
+    public dev.malik.lcftbhook.port.protection.BlockProtectionPort blockProtection() {
+        return blockProtection;
+    }
+
     /** The claims color the team's owner set in OPAC. */
     @Override
     public int teamColor(MinecraftServer server, UUID teamId) {

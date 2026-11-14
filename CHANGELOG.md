@@ -2,6 +2,21 @@
 
 All notable changes to LC FTB Hook are documented in this file.
 
+## [4.5.2]
+
+### Fixed
+- ScorchedGuns could damage claimed land no matter which protections a region had, because it changes blocks directly instead of through the events claim mods watch. Covered now, with FTB Chunks and Open Parties and Claims alike:
+  - Bullets shooting out glass, panes, ice, lanterns and other fragile blocks
+  - Heavy rounds (Krahg, Osborne slug) destroying stone, wood and other blocks
+  - Beam weapons (CR4K Mining Laser, Flayed God, Shard Culler) mining blocks from a distance
+  - Bullets priming TNT and powder/nitro kegs, and shooting doors open
+  - Fire rounds, incendiary grenades and Hellfire bombs setting fire
+  - Scamp Tanks and Scamp rockets crushing barrels, lanterns, granite, sandbags and supply crates
+  - The Penetrator block drilling its tunnel into a claim
+
+  Each case follows the protection that fits whoever caused it. If a player fired the shot, the block edit rules apply to that player (for doors, the interact rules), so team members can still shoot out their own glass. If a mob fired it, mob griefing protection applies. Anything without a player or mob behind it, such as the Penetrator, follows explosion protection, the same as TNT. Gun explosions (grenades, rockets) were already covered by explosion protection. Nothing changes when ScorchedGuns isn't installed.
+- With FTB Chunks, mob griefing protection only ever stopped endermen, because FTB Chunks only applies it to mobs listed in its `ftbchunks:entity_mob_griefing_blacklist` tag. This mod now adds ravagers, zombies (including husks, drowned and zombie villagers), vindicators, evokers, the Wither and silverfish to that tag. Protected regions and server-team claims are now actually safe from crop trampling, door breaking and the other griefing the protection describes. Like everything else in FTB Chunks' mob griefing check, it applies while the mob itself stands in the protected chunk.
+
 ## [4.5.1]
 
 ### Changed

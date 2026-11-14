@@ -207,6 +207,23 @@ Progress is measured by `BackendIsolationTest` (ratchet list in
   (OPAC's tickets aren't saved, nothing to drop). If a hook breaks, the claim
   mod loads by its own rules on top of ours - longer than the mode says, never
   shorter.
+- Direct block changes by other mods (4.5.2): mods that call
+  `destroyBlock`/`setBlock` themselves bypass every event a claim mod
+  watches. `service.BlockChangeGuard` (backend-neutral) finds who is behind
+  such a change - owner chain projectile -> shooter -> tamer - and asks
+  `port.protection.BlockProtectionPort` (from `ClaimPort.blockProtection()`):
+  a player -> the claim mod's own block rules for that player
+  (`FtbBlockProtection`: FTB's `shouldPreventInteraction`;
+  `OpacBlockProtection`: OPAC's `onBlockInteraction`), a mob -> its
+  mob-griefing rules, nobody -> its explosion rules. Fails closed (an
+  exception = block kept). FTB's explosion / mob-griefing lookup lives in
+  `adapter.ftb.FtbChunkProtection`, shared with `ClaimedChunkRegionProtectionMixin`,
+  so FTB's own handler and the guard can't disagree. First user: the
+  ScorchedGuns hooks (`mixin/scguns`, optional config
+  `lc_ftb_hook_scguns.mixins.json`, string targets - no compile dependency;
+  `adapter/scguns/ScgunsBlockChanges` reads a bullet's shooter). Strict check
+  after a ScorchedGuns bump: `-Pscguns_mixin_required=true
+  -Pscguns_mixin_default_require=1` + `/lcfhtest scguns` (see below).
 - Numismatics: the ONLY Numismatics-internal hook is
   `mixin/numismatics/BankAccountServerOpAccessMixin` (lets ops open the server
   account at a Bank Terminal, permission checked live; `require = 0`, config
@@ -279,6 +296,15 @@ OPAC and Numismatics are never on a run's classpath):
 All wrappers call `scripts/start-server.ps1 -Env <env>` / `start-client.ps1 -Env <env> -Number <n>`
 (table in `scripts/dev-envs.ps1`, must match `devEnvs`). Stop a server
 gracefully with `python3 scripts/dev/rcon.py --port <rcon> stop`.
+
+**Dev test mod** (`src/devtest`, mod id `lc_ftb_hook_devtest`): loaded into
+every dev run, never in the release jar. RCON commands that drive other mods'
+code against this mod's hooks and print PASS/FAIL: `/lcfhtest scguns <team>`
+(FTB + ScorchedGuns, 51 cases, region restored afterwards) and
+`/lcfhtest blockport [protect on|off]` (any claim backend). It compiles
+against ScorchedGuns (`scguns_project`/`scguns_file`); the ScorchedGuns jars
+themselves are only copied into a dev server's `mods/` for the test run (see
+TESTPLAN section 14).
 
 ## How to apply
 

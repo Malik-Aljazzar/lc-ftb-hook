@@ -1,0 +1,17 @@
+modLoader="javafml"
+loaderVersion="[1,)"
+license="All Rights Reserved"
+
+# Dev-only test mod (src/devtest) - loaded into dev runs, never released.
+[[mods]]
+modId="lc_ftb_hook_devtest"
+version="0.0.0"
+displayName="LC FTB Hook dev tests"
+description='''Dev-only test commands (/lcfhtest) for LC FTB Hook. Never part of a release.'''
+
+[[dependencies.lc_ftb_hook_devtest]]
+modId="lc_ftb_hook"
+type="required"
+versionRange="[0,)"
+ordering="AFTER"
+side="BOTH"

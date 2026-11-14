@@ -60,6 +60,14 @@ def devEnvs = [
                      clients: [clientOpacLc1: 'OpacOwner', clientOpacLc2: 'OpacOfficer']],
 ]
 
+// Dev-only test mod (lc_ftb_hook_devtest, src/devtest): server commands that
+// drive other mods' code paths against this mod's protection hooks, e.g.
+// /lcfhtest scguns. Loaded into every dev run, never part of the release jar
+// (jar/publishMods only ever package the main source set).
+sourceSets {
+    devtest
+}
+
 neoForge {
     version = project.neo_version
 
@@ -117,8 +125,13 @@ neoForge {
         "${mod_id}" {
             sourceSet(sourceSets.main)
         }
+        lc_ftb_hook_devtest {
+            sourceSet(sourceSets.devtest)
+        }
     }
 }
+
+neoForge.addModdingDependenciesTo(sourceSets.devtest)
 
 configurations {
     runtimeClasspath.extendsFrom localRuntime
@@ -148,6 +161,8 @@ configurations {
         canBeConsumed = false
         canBeResolved = true
     }
+    // The dev test mod compiles against everything the main mod compiles against.
+    devtestCompileOnly.extendsFrom compileOnly
 }
 
 repositories {
@@ -230,6 +245,12 @@ dependencies {
     if (packCreateJar.exists()) {
         numismaticsTestMods files(packCreateJar)
     }
+
+    // Dev test mod: the main mod's classes + the mods its tests drive. The main
+    // mod itself never compiles against ScorchedGuns (its hooks target it by name).
+    devtestCompileOnly sourceSets.main.output
+    devtestCompileOnly "curse.maven:scorched-guns-neoforged-${scguns_project}:${scguns_file}"
+    localRuntime sourceSets.devtest.output
 }
 
 // Fills every dev run's mods folder with exactly its environment's backends
@@ -305,7 +326,9 @@ var generateModMetadata = tasks.register('generateModMetadata', ProcessResources
             lightmanscurrency_version: lightmanscurrency_version,
             lightmanscurrency_version_min: lightmanscurrency_version_min,
             xaero_mixin_required   : xaero_mixin_required,
-            xaero_mixin_default_require: xaero_mixin_default_require
+            xaero_mixin_default_require: xaero_mixin_default_require,
+            scguns_mixin_required  : scguns_mixin_required,
+            scguns_mixin_default_require: scguns_mixin_default_require
     ]
     inputs.properties replaceProperties
     expand replaceProperties

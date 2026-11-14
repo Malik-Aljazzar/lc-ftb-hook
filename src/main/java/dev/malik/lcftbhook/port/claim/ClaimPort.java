@@ -25,6 +25,9 @@ public interface ClaimPort {
     /** The protection settings this claim mod enforces - regions offer exactly these. */
     dev.malik.lcftbhook.port.protection.ProtectionFieldSet protectionFields();
 
+    /** This claim mod's answer to "may this cause change that block" - for block changes that bypass its own events. */
+    dev.malik.lcftbhook.port.protection.BlockProtectionPort blockProtection();
+
     /** The team's claim color on maps, 0xRRGGBB. */
     int teamColor(MinecraftServer server, UUID teamId);
 

@@ -31,6 +31,13 @@ public final class FtbClaimPort implements ClaimPort {
         return FtbProtectionFields.SET;
     }
 
+    private final FtbBlockProtection blockProtection = new FtbBlockProtection();
+
+    @Override
+    public dev.malik.lcftbhook.port.protection.BlockProtectionPort blockProtection() {
+        return blockProtection;
+    }
+
     @Override
     public int teamColor(MinecraftServer server, UUID teamId) {
         return team(teamId).map(t -> t.getProperty(dev.ftb.mods.ftbteams.api.property.TeamProperties.COLOR).rgb()).orElse(0xFFFFFF);

@@ -1,0 +1,22 @@
+{
+  "required": ${scguns_mixin_required},
+  "package": "dev.malik.lcftbhook.mixin.scguns",
+  "plugin": "dev.malik.lcftbhook.mixinplugin.BackendMixinPlugin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "ScgunsBeamMiningMixin",
+    "ScgunsDoorShotMixin",
+    "ScgunsFireGrenadeMixin",
+    "ScgunsFireRoundMixin",
+    "ScgunsHeavyRoundMixin",
+    "ScgunsHellfireBombMixin",
+    "ScgunsPenetratorMixin",
+    "ScgunsProjectileAccessor",
+    "ScgunsProjectileMixin",
+    "ScgunsScampRocketMixin",
+    "ScgunsScampTankMixin"
+  ],
+  "injectors": {
+    "defaultRequire": ${scguns_mixin_default_require}
+  }
+}

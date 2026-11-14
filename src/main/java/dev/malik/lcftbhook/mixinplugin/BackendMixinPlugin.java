@@ -26,7 +26,8 @@ public final class BackendMixinPlugin implements IMixinConfigPlugin {
             "xaero.pac.", "openpartiesandclaims",
             "xaero.map.", "xaeroworldmap",
             "dev.satherov.ftbxaerocompat.", "ftbxaerocompat",
-            "dev.ithundxr.createnumismatics.", "numismatics"
+            "dev.ithundxr.createnumismatics.", "numismatics",
+            "top.ribs.scguns.", "scguns"
     );
 
     /** Applies a mixin only if the mod owning its target is installed; unknown targets always apply. */

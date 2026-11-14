@@ -101,3 +101,10 @@ config="lc_ftb_hook_xaero.mixins.json"
 # load unconditionally - Mixin skips targets that don't resolve.
 [[mixins]]
 config="lc_ftb_hook_sable.mixins.json"
+
+# Optional (required=false in the config itself): claim protection against
+# ScorchedGuns' direct block changes (bullets shooting out glass, heavy rounds,
+# beam mining, fire rounds, Scamp mobs, the Penetrator). Skipped
+# (BackendMixinPlugin) when ScorchedGuns isn't installed.
+[[mixins]]
+config="lc_ftb_hook_scguns.mixins.json"

@@ -39,7 +39,8 @@ class BackendIsolationTest {
             "dev.ithundxr.createnumismatics.", List.of("adapter/numismatics/", "mixin/numismatics/", "client/numismatics/"),
             "xaero.map.", List.of("client/xaero/", "mixin/client/xaero/"),
             "xaero.common.", List.of("client/xaero/", "mixin/client/xaero/"),
-            "xaero.lib.", List.of("client/xaero/", "mixin/client/xaero/")
+            "xaero.lib.", List.of("client/xaero/", "mixin/client/xaero/"),
+            "top.ribs.scguns.", List.of("adapter/scguns/", "mixin/scguns/")
     );
 
     @Test

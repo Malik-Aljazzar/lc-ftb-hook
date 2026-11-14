@@ -1,0 +1,15 @@
+{
+  "replace": false,
+  "values": [
+    "minecraft:enderman",
+    "minecraft:ravager",
+    "minecraft:zombie",
+    "minecraft:husk",
+    "minecraft:drowned",
+    "minecraft:zombie_villager",
+    "minecraft:vindicator",
+    "minecraft:evoker",
+    "minecraft:wither",
+    "minecraft:silverfish"
+  ]
+}
