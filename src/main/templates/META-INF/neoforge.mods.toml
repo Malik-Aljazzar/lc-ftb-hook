@@ -33,14 +33,14 @@ side="BOTH"
 [[dependencies.${mod_id}]]
 modId="ftbteams"
 type="optional"
-versionRange="[${ftb_teams_version},)"
+versionRange="[${ftb_teams_version_min},)"
 ordering="NONE"
 side="BOTH"
 
 [[dependencies.${mod_id}]]
 modId="ftbchunks"
 type="optional"
-versionRange="[${ftb_chunks_version},)"
+versionRange="[${ftb_chunks_version_min},)"
 ordering="NONE"
 side="BOTH"
 

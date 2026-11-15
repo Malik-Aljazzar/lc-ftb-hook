@@ -11,8 +11,13 @@
     "FTBChunksForceLoadTicketMixin",
     "FTBChunksPlayerJoinedPartyMixin",
     "FTBChunksPvPMixin",
+    "FireSpreadRegionPrivacyMixin",
+    "FlowingFluidRegionPrivacyMixin",
+    "FtbcUtilsNonLivingProtectionMixin",
+    "NetherPortalRegionContextMixin",
     "PartyTeamOwnerAccessor",
     "PartyTeamRankSyncMixin",
+    "PistonRegionPrivacyMixin",
     "RequestChunkChangePacketMixin"
   ],
   "injectors": {

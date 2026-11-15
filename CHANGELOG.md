@@ -2,6 +2,26 @@
 
 All notable changes to LC FTB Hook are documented in this file.
 
+## [4.5.4]
+
+### Fixed
+- With FTB Chunks, two protection checks ignored the region settings and always treated them as Public, so they never protected anything:
+  - FTB Chunks 2101.1.24's new nether portal protection (world setting `nether_portal_creation`): a player travelling through a nether portal still got a portal built inside another team's protected region. It now follows the block edit setting of the chunk the portal would be built in.
+  - Item frames, boats and minecarts in a protected region could be broken by another player's arrows and other projectiles. The non-living entity protection now covers those too.
+
+### Changed
+- With FTB Chunks, a few protections now follow the region instead of always protecting every claim for free (FTB Chunks read them from its own team setting, which is always on, no matter what the region has):
+  - Pistons pushing or pulling blocks into another team's claim (FTB Chunks' `piston_protection`, on by default), fire spreading into it (`fire_spread_protection`) and fluids flowing into it (`flowing_fluid_protection`) are only blocked where the claim's region protects block edits. A region with Public block edits, or a private chunk opened to Public, lets them in.
+  - Explosions only break item frames, boats and minecarts where the region has no explosion protection, the same as blocks.
+
+  Server team claims keep FTB Chunks' own settings.
+
+### Added
+- If FTB Chunks or another mod checks one of the region protection settings without saying which chunk it is about, the server log names that caller once. Region settings can't apply there (the setting counts as Public), so this makes such a gap visible.
+
+### Compatibility
+- Tested against FTB Chunks 2101.1.24, FTB Teams 2101.1.12, FTB Library 2101.1.39, Architectury 13.0.12, FTB Chunks x Xaero's Map Compat 1.4.0 and NeoForge 21.1.266 (older supported versions keep working: the minimum versions stay FTB Chunks 2101.1.22, FTB Teams 2101.1.11, FTB Library 2101.1.35 and NeoForge 21.1.197). The startup note about a differing FTB Chunks version now compares against 2101.1.24.
+
 ## [4.5.3]
 
 ### Added

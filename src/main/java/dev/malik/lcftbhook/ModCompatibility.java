@@ -17,9 +17,9 @@ import java.util.Optional;
  * https://github.com/ManOfKott/lc-ftb-hook/issues/1
  */
 public final class ModCompatibility {
-    /** Must match {@code ftb_chunks_version} in gradle.properties. */
-    public static final String REQUIRED_FTB_CHUNKS_VERSION = "2101.1.22";
-    /** Must match {@code lightmanscurrency_version} in gradle.properties. */
+    /** Must match {@code ftb_chunks_version} in gradle.properties (checked by ModCompatibilityVersionsTest). */
+    public static final String REQUIRED_FTB_CHUNKS_VERSION = "2101.1.24";
+    /** Must match {@code lightmanscurrency_version} in gradle.properties (checked by ModCompatibilityVersionsTest). */
     public static final String REQUIRED_LIGHTMANS_CURRENCY_VERSION = "1.21-2.3.0.5";
 
     private ModCompatibility() {

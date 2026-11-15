@@ -5,6 +5,7 @@ import dev.ftb.mods.ftbteams.api.Team;
 import dev.ftb.mods.ftbteams.api.property.PrivacyMode;
 import dev.ftb.mods.ftbteams.api.property.PrivacyProperty;
 import dev.ftb.mods.ftbteams.api.property.TeamProperty;
+import dev.malik.lcftbhook.adapter.ftb.FtbRegionPrivacy;
 import dev.malik.lcftbhook.data.ChunkOwnership;
 import dev.malik.lcftbhook.data.PlayerAccessList;
 import dev.malik.lcftbhook.data.PrivacyLevel;
@@ -72,18 +73,15 @@ public abstract class ChunkTeamDataRegionPrivacyMixin {
             return team.getProperty(property); // server teams are protected by FTB's own settings, not regions
         }
         if (property instanceof PrivacyProperty) {
-            ProtectionProperty regionProperty = regionPropertyFor(property);
+            ProtectionProperty regionProperty = FtbRegionPrivacy.regionPropertyFor(property);
             if (regionProperty != null) {
-                PrivacyLevel level = PrivacyLevel.valueOf(effectiveValue(regionProperty));
-                return switch (level) {
-                    case PUBLIC -> PrivacyMode.PUBLIC;
-                    case ALLIES -> PrivacyMode.ALLIES;
-                    // TEAM and PRIVATE both feed FTB's own "whole team"
-                    // check here - PRIVATE's further narrowing (to just the
-                    // owner, or to officers/owner) happens below instead,
-                    // since FTB has no native concept for either.
-                    case TEAM, PRIVATE -> PrivacyMode.PRIVATE;
-                };
+                if (RegionEnforcementContext.get() == null) {
+                    FtbRegionPrivacy.reportMissingContext(property);
+                }
+                // PRIVATE's further narrowing (to just the owner, or to
+                // officers/owner) happens below instead, since FTB has no
+                // native concept for either.
+                return FtbRegionPrivacy.toFtbMode(PrivacyLevel.valueOf(effectiveValue(regionProperty)));
             }
         }
         return team.getProperty(property);
@@ -130,7 +128,7 @@ public abstract class ChunkTeamDataRegionPrivacyMixin {
         if (owner == null || owner.isServerTeam()) {
             return;
         }
-        ProtectionProperty regionProperty = regionPropertyFor(property);
+        ProtectionProperty regionProperty = FtbRegionPrivacy.regionPropertyFor(property);
         if (regionProperty == null) {
             return;
         }
@@ -200,15 +198,5 @@ public abstract class ChunkTeamDataRegionPrivacyMixin {
         Region region = resolved != null ? resolved.region() : Region.createDefault();
         ChunkOwnership ownership = resolved != null ? resolved.ownership() : ChunkOwnership.EMPTY;
         return ProtectionResolution.effectiveValue(region, ownership, regionProperty);
-    }
-
-    private static ProtectionProperty regionPropertyFor(TeamProperty<?> property) {
-        String path = property.getId().getPath();
-        for (ProtectionProperty candidate : ProtectionProperty.values()) {
-            if (candidate.isPrivacyMode() && candidate.id().equals(path)) {
-                return candidate;
-            }
-        }
-        return null;
     }
 }

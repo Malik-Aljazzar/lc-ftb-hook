@@ -13,7 +13,9 @@ import net.neoforged.neoforge.event.RegisterCommandsEvent;
 /**
  * Dev-only test commands, run via RCON on a dev server:
  * {@code /lcfhtest scguns <teamName>} - see {@link ScgunsProtectionTest} (FTB Chunks + ScorchedGuns);
- * {@code /lcfhtest blockport} - see {@link BlockPortSmokeTest} (any claim backend).
+ * {@code /lcfhtest blockport} - see {@link BlockPortSmokeTest} (any claim backend);
+ * {@code /lcfhtest ftbregion <teamName>} - see {@link FtbRegionHooksTest} (FTB Chunks);
+ * {@code /lcfhtest mixinaudit} - see {@link MixinAuditCheck} (after a dependency bump).
  * Prints PASS/FAIL per case; the command result is 1 when everything passed.
  */
 @Mod("lc_ftb_hook_devtest")
@@ -30,12 +32,25 @@ public final class LcfhDevTest {
                         .then(Commands.literal("protect")
                                 .then(Commands.literal("on").executes(ctx -> BlockPortSmokeTest.protect(ctx.getSource(), true)))
                                 .then(Commands.literal("off").executes(ctx -> BlockPortSmokeTest.protect(ctx.getSource(), false)))))
+                .then(Commands.literal("ftbregion")
+                        .then(Commands.argument("team", StringArgumentType.word())
+                                .executes(ctx -> runFtbRegion(ctx.getSource(), StringArgumentType.getString(ctx, "team")))))
+                .then(Commands.literal("mixinaudit")
+                        .executes(ctx -> MixinAuditCheck.run(ctx.getSource())))
                 .then(Commands.literal("upkeep")
                         .then(Commands.argument("team", StringArgumentType.word())
                                 .executes(ctx -> UpkeepDiscountCheck.run(ctx.getSource(), StringArgumentType.getString(ctx, "team")))))
                 .then(Commands.literal("scguns")
                         .then(Commands.argument("owner", StringArgumentType.word())
                                 .executes(ctx -> runScguns(ctx.getSource(), StringArgumentType.getString(ctx, "owner"))))));
+    }
+
+    private static int runFtbRegion(CommandSourceStack source, String team) {
+        if (!ModList.get().isLoaded("ftbchunks")) {
+            source.sendFailure(Component.literal("needs FTB Chunks on this server"));
+            return 0;
+        }
+        return FtbRegionHooksTest.run(source, team);
     }
 
     private static int runScguns(CommandSourceStack source, String owner) {
