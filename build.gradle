@@ -372,18 +372,28 @@ def changelogSection = providers.provider {
     "## [${mod_version}]\n\n${body}"
 }
 
-// Upload to CurseForge + GitHub release, run by .github/workflows/release.yml
-// on a version tag. Without CURSEFORGE_API_KEY (e.g. on a dev machine) it's
-// always a dry run: the upload is only written to build/publishMods, never sent.
+// Upload to CurseForge + Modrinth + GitHub release, run by
+// .github/workflows/release.yml on a version tag. Unless BOTH
+// CURSEFORGE_API_KEY and MODRINTH_TOKEN are set (e.g. on a dev machine) it's
+// always a dry run: the upload is only written to build/publishMods, never
+// sent - so a missing token can never publish a version to only some sites.
+//
+// -PpublishJar=<path> publishes an already released jar instead of building
+// one (with -Pmod_version=<its version>), used by
+// .github/workflows/modrinth-backfill.yml to put a version that is on
+// CurseForge already onto Modrinth too - byte-identical file, same notes.
 publishMods {
-    file = jar.archiveFile
+    file = providers.gradleProperty('publishJar')
+            .map { layout.projectDirectory.file(it) }
+            .orElse(jar.archiveFile)
     changelog = changelogSection
     version = mod_version
     type = STABLE
     // Same names as every upload so far.
     displayName = "${mod_id}-${mod_version}"
     modLoaders.add('neoforge')
-    dryRun = providers.environmentVariable('CURSEFORGE_API_KEY').getOrNull() == null
+    dryRun = providers.environmentVariable('CURSEFORGE_API_KEY').getOrNull() == null ||
+            providers.environmentVariable('MODRINTH_TOKEN').getOrNull() == null
 
     curseforge {
         projectId = '1576403'
@@ -393,6 +403,15 @@ publishMods {
         server = true
         // Every backend is optional - one claim mod and one currency mod are picked at runtime.
         optional('ftb-chunks-forge', 'open-parties-and-claims', 'lightmans-currency', 'numismatics',
+                'xaeros-minimap', 'xaeros-world-map')
+    }
+    modrinth {
+        // https://modrinth.com/mod/lcftb-hook (project id, stays the same if the slug changes)
+        projectId = 'ymLKwaGY'
+        accessToken = providers.environmentVariable('MODRINTH_TOKEN')
+        minecraftVersions.add(minecraft_version)
+        // Same as the CurseForge list, minus FTB Chunks: FTB's mods aren't on Modrinth.
+        optional('open-parties-and-claims', 'lightmans-currency', 'numismatics',
                 'xaeros-minimap', 'xaeros-world-map')
     }
     github {

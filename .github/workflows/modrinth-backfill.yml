@@ -1,0 +1,93 @@
+# Puts a version that was released before Modrinth was added to the release
+# workflow (it is on CurseForge + GitHub already) onto Modrinth too. Run it by
+# hand: Actions -> "Modrinth backfill" -> Run workflow -> version (e.g. 4.5.4).
+#
+# Uploads the jar of that version's GitHub release - the same file as on
+# CurseForge, not a rebuild - with its CHANGELOG.md section as notes, and only
+# to Modrinth (only the publishModrinth task runs, never CurseForge/GitHub).
+# Refuses if Modrinth has the version already.
+#
+# Needs the repository secret MODRINTH_TOKEN. CURSEFORGE_API_KEY is passed only
+# because build.gradle stays in dry-run mode unless both tokens are present;
+# nothing here talks to CurseForge.
+name: Modrinth backfill
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Released version, e.g. 4.5.4 (needs GitHub release v<version> with its jar)'
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      VERSION: ${{ inputs.version }}
+    steps:
+      # Current main: build.gradle with the Modrinth settings, CHANGELOG.md with
+      # every released section (released sections are never edited).
+      - uses: actions/checkout@v4
+
+      - name: Check version and tokens
+        env:
+          CURSEFORGE_API_KEY: ${{ secrets.CURSEFORGE_API_KEY }}
+          MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
+        run: |
+          if ! [[ "${VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::'${VERSION}' is not a version like 4.5.4"
+            exit 1
+          fi
+          if ! grep -q "^## \[${VERSION}\]" CHANGELOG.md; then
+            echo "::error::CHANGELOG.md has no '## [${VERSION}]' section"
+            exit 1
+          fi
+          for name in CURSEFORGE_API_KEY MODRINTH_TOKEN; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Repository secret ${name} is not set"
+              exit 1
+            fi
+          done
+
+      - name: Check Modrinth doesn't have this version yet
+        env:
+          MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
+        run: |
+          curl -sSf -H "Authorization: ${MODRINTH_TOKEN}" -A "Malik-Aljazzar/lc-ftb-hook release workflow" \
+            "https://api.modrinth.com/v2/project/ymLKwaGY/version" > modrinth-versions.json
+          if jq -e --arg v "${VERSION}" 'map(.version_number) | index($v) != null' modrinth-versions.json > /dev/null; then
+            echo "::error::Modrinth already has version ${VERSION} - nothing was published"
+            exit 1
+          fi
+
+      - name: Download the released jar
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "v${VERSION}" --repo "${GITHUB_REPOSITORY}" \
+            --pattern "lc_ftb_hook-${VERSION}.jar" --dir build/backfill
+          ls -l build/backfill
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Publish to Modrinth
+        env:
+          CURSEFORGE_API_KEY: ${{ secrets.CURSEFORGE_API_KEY }}
+          MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
+        run: |
+          chmod +x gradlew
+          ./gradlew publishModrinth -Pmod_version="${VERSION}" \
+            -PpublishJar="build/backfill/lc_ftb_hook-${VERSION}.jar" --console=plain

@@ -1,11 +1,15 @@
 # Publishes a version: push a tag "v<mod_version>" (e.g. v4.5.0) and this
-# builds + tests the mod, then uploads the jar to CurseForge and creates a
-# GitHub release, both with that version's CHANGELOG.md section as notes.
-# Refuses to publish if the tag doesn't match mod_version in gradle.properties
-# or the changelog has no section for it.
+# builds + tests the mod, then uploads the jar to CurseForge and Modrinth and
+# creates a GitHub release, all with that version's CHANGELOG.md section as
+# notes. Refuses to publish if the tag doesn't match mod_version in
+# gradle.properties, the changelog has no section for it, or Modrinth already
+# has that version (Modrinth itself would accept it a second time).
 #
-# Needs the repository secret CURSEFORGE_API_KEY (CurseForge account ->
-# API tokens). GITHUB_TOKEN is provided by GitHub itself.
+# Needs the repository secrets CURSEFORGE_API_KEY (CurseForge account ->
+# API tokens) and MODRINTH_TOKEN (modrinth.com/settings/pats, scope "Create
+# versions"). GITHUB_TOKEN is provided by GitHub itself.
+#
+# A version released before Modrinth was added: modrinth-backfill.yml.
 name: Release
 
 on:
@@ -38,13 +42,29 @@ jobs:
             exit 1
           fi
 
-      - name: Check CurseForge token is set
+      - name: Check tokens are set
         env:
           CURSEFORGE_API_KEY: ${{ secrets.CURSEFORGE_API_KEY }}
+          MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
         run: |
-          # Without it the publish step would silently do a dry run only.
-          if [ -z "${CURSEFORGE_API_KEY}" ]; then
-            echo "::error::Repository secret CURSEFORGE_API_KEY is not set"
+          # Without both the publish step would silently do a dry run only.
+          for name in CURSEFORGE_API_KEY MODRINTH_TOKEN; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Repository secret ${name} is not set"
+              exit 1
+            fi
+          done
+
+      - name: Check Modrinth doesn't have this version yet
+        env:
+          MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          # With the token the list includes unlisted/draft versions too.
+          curl -sSf -H "Authorization: ${MODRINTH_TOKEN}" -A "Malik-Aljazzar/lc-ftb-hook release workflow" \
+            "https://api.modrinth.com/v2/project/ymLKwaGY/version" > modrinth-versions.json
+          if jq -e --arg v "${version}" 'map(.version_number) | index($v) != null' modrinth-versions.json > /dev/null; then
+            echo "::error::Modrinth already has version ${version} - nothing was published"
             exit 1
           fi
 
@@ -58,6 +78,7 @@ jobs:
       - name: Build, test and publish
         env:
           CURSEFORGE_API_KEY: ${{ secrets.CURSEFORGE_API_KEY }}
+          MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           chmod +x gradlew
