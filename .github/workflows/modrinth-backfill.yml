@@ -56,6 +56,12 @@ jobs:
               exit 1
             fi
           done
+          # Modrinth rejects anything else ("Authentication method was not
+          # valid") - and only on upload; reading public data ignores a bad token.
+          if ! [[ "${MODRINTH_TOKEN}" =~ ^mrp_[A-Za-z0-9]+$ ]]; then
+            echo "::error::Secret MODRINTH_TOKEN is not a Modrinth personal access token (must be exactly the mrp_... value, no 'Bearer', quotes or spaces)"
+            exit 1
+          fi
 
       - name: Check Modrinth doesn't have this version yet
         env:

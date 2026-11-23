@@ -54,6 +54,12 @@ jobs:
               exit 1
             fi
           done
+          # Modrinth rejects anything else ("Authentication method was not
+          # valid") - and only on upload; reading public data ignores a bad token.
+          if ! [[ "${MODRINTH_TOKEN}" =~ ^mrp_[A-Za-z0-9]+$ ]]; then
+            echo "::error::Secret MODRINTH_TOKEN is not a Modrinth personal access token (must be exactly the mrp_... value, no 'Bearer', quotes or spaces)"
+            exit 1
+          fi
 
       - name: Check Modrinth doesn't have this version yet
         env:
@@ -75,11 +81,25 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Build, test and publish
+      # Modrinth goes last, on its own: if only it fails (e.g. an expired token),
+      # CurseForge and the GitHub release are done and modrinth-backfill.yml
+      # uploads that same jar later. Re-running this workflow instead would
+      # upload the version to CurseForge a second time.
+      - name: Build, test and publish to CurseForge + GitHub
         env:
           CURSEFORGE_API_KEY: ${{ secrets.CURSEFORGE_API_KEY }}
           MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           chmod +x gradlew
-          ./gradlew build publishMods --console=plain
+          ./gradlew build publishCurseforge publishGithub --console=plain
+
+      - name: Publish to Modrinth
+        env:
+          CURSEFORGE_API_KEY: ${{ secrets.CURSEFORGE_API_KEY }}
+          MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
+        run: |
+          if ! ./gradlew publishModrinth --console=plain; then
+            echo "::error::CurseForge and GitHub are published, Modrinth failed. Fix the cause (e.g. renew MODRINTH_TOKEN), then run the 'Modrinth backfill' workflow for ${GITHUB_REF_NAME#v} - do NOT re-run this workflow (it would upload to CurseForge again)."
+            exit 1
+          fi
